@@ -1,0 +1,724 @@
+<style>
+/* ── Sidebar Logout Button ────────────────────────────────────────────────── */
+
+.sidebar-logout-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 6px 8px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.sidebar-logout-btn:hover {
+  color: #ef4444;
+  background: #fee2e2;
+}
+
+/* ── Dashboard Header Row ────────────────────────────────────────────────── */
+
+.dash-header {
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+
+.dash-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.dash-history-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+/* ── History Modal Backdrop ──────────────────────────────────────────────── */
+
+.hist-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  z-index: 500;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.hist-modal {
+  background: white;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 1100px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.25);
+  overflow: hidden;
+}
+
+/* ── Modal Header ────────────────────────────────────────────────────────── */
+
+.hist-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.hist-modal-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hist-modal-title i { color: var(--primary-color); }
+
+.hist-modal-close {
+  background: #f1f5f9;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #64748b;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.hist-modal-close:hover { background: #e2e8f0; color: #1e293b; }
+
+/* ── Modal Filters ───────────────────────────────────────────────────────── */
+
+.hist-modal-filters {
+  display: flex;
+  gap: 10px;
+  padding: 14px 24px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #f8fafc;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.hist-filter-select {
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 0.82rem;
+  color: #334155;
+  min-width: 160px;
+  -webkit-appearance: none;
+}
+
+.hist-filter-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.hist-search-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+}
+
+.hist-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+
+.hist-filter-input {
+  width: 100%;
+  padding: 7px 10px 7px 30px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 0.82rem;
+  color: #334155;
+  box-sizing: border-box;
+}
+
+.hist-filter-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+/* ── Modal Body & Table ──────────────────────────────────────────────────── */
+
+.hist-modal-body {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.hist-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.hist-th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  padding: 10px 16px;
+  text-align: left;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  border-bottom: 2px solid #e2e8f0;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.hist-row:hover { background: #f8fafc; }
+
+.hist-td {
+  padding: 10px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+  color: #334155;
+}
+
+.hist-td-date   { white-space: nowrap; font-weight: 600; color: #475569; }
+.hist-td-sport  { font-weight: 500; }
+.hist-td-logged { color: #64748b; font-size: 0.75rem; }
+.hist-td-ts     { color: #94a3b8; font-size: 0.72rem; white-space: nowrap; }
+
+.hist-student-name { font-weight: 600; color: #1e293b; }
+.hist-student-id   { font-size: 0.7rem; color: #94a3b8; margin-top: 1px; }
+
+/* ── Action Badges ───────────────────────────────────────────────────────── */
+
+.hist-action-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.hist-action-add     { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.hist-action-move    { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.hist-action-drop    { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.hist-action-restore { background: #fdf4ff; color: #7e22ce; border: 1px solid #e9d5ff; }
+.hist-action-other   { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+
+/* ── Level Change ────────────────────────────────────────────────────────── */
+
+.hist-level-change {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+}
+
+.hist-level-from {
+  color: #94a3b8;
+  text-decoration: line-through;
+}
+
+.hist-level-to {
+  font-weight: 600;
+  color: #334155;
+}
+
+/* ── Error & Toast ───────────────────────────────────────────────────────── */
+
+.dash-title {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #1e293b;
+  margin: 0 0 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dash-title i { color: var(--primary-color); }
+
+.dash-subtitle {
+  color: #64748b;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+/* ── 3-Column Season Layout ──────────────────────────────────────────────── */
+
+.dash-season-columns {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1300px) {
+  .dash-season-columns { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 700px) {
+  .dash-season-columns { grid-template-columns: 1fr; }
+}
+
+/* ── Season Column ───────────────────────────────────────────────────────── */
+
+.dash-season-col {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.dash-season-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dash-season-col-title {
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dash-season-col-title i { color: var(--primary-color); }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.dash-btn-sm {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: opacity 0.15s;
+}
+
+.dash-btn-sm:hover { opacity: 0.85; }
+
+.dash-icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.dash-btn-archive { background: #fff7ed; color: #f59e0b; }
+.dash-btn-archive:hover  { background: #fef3c7; }
+.dash-btn-restore { background: #f0fdf4; color: #22c55e; }
+.dash-btn-restore:hover  { background: #dcfce7; }
+.dash-btn-edit    { background: #eff6ff; color: #3b82f6; }
+.dash-btn-edit:hover     { background: #dbeafe; }
+.dash-btn-danger  { background: #fef2f2; color: #ef4444; }
+.dash-btn-danger:hover   { background: #fee2e2; }
+
+.dash-btn-cancel {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dash-btn-confirm {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.dash-btn-confirm:hover { opacity: 0.85; }
+
+/* ── Inline Add Sport Form ───────────────────────────────────────────────── */
+
+.dash-inline-form {
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dash-input-sm {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 7px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 0.8rem;
+  color: #1e293b;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+}
+
+.dash-input-sm:focus {
+  border-color: var(--primary-color);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+.dash-inline-form-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  justify-content: flex-end;
+}
+
+.dash-inline-msg {
+  font-size: 0.72rem;
+  margin-top: 6px;
+  min-height: 16px;
+  font-weight: 500;
+}
+
+.dash-msg-success { color: #16a34a; }
+.dash-msg-error   { color: #dc2626; }
+
+/* ── Sport Item Row ──────────────────────────────────────────────────────── */
+
+.dash-sport-item {
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.dash-sport-item:last-child { border-bottom: none; }
+
+.dash-sport-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+  gap: 8px;
+}
+
+.dash-sport-item-header:hover { background: #f8fafc; }
+
+.dash-sport-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.dash-sport-chevron {
+  color: #94a3b8;
+  font-size: 0.65rem;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.dash-sport-chevron.rotated { transform: rotate(90deg); }
+
+.dash-sport-item-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dash-coach-count {
+  background: var(--primary-soft);
+  color: var(--primary-color);
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.dash-sport-item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.dash-sport-archived { opacity: 0.5; }
+
+.dash-archived-tag {
+  font-size: 0.6rem;
+  font-weight: 800;
+  background: #fee2e2;
+  color: #ef4444;
+  padding: 1px 5px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+
+/* ── Sport Accordion Body ────────────────────────────────────────────────── */
+
+.dash-sport-accordion {
+  display: none;
+  padding: 0 16px 12px 32px;
+  background: #fafafa;
+  border-top: 1px solid #f1f5f9;
+}
+
+.dash-sport-accordion.open { display: block; }
+
+/* ── Coach Form inside Accordion ─────────────────────────────────────────── */
+
+.dash-coach-form {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  margin-top: 8px;
+}
+
+.dash-coach-form-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #475569;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ── Coach Item ──────────────────────────────────────────────────────────── */
+
+.dash-coach-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+  gap: 8px;
+}
+
+.dash-coach-item:last-of-type { border-bottom: none; }
+
+.dash-coach-item-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.dash-coach-item-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.dash-pin-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.dash-coach-item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ── No Coaches / Empty ──────────────────────────────────────────────────── */
+
+.dash-no-coaches {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  padding: 8px 0 4px 0;
+  font-style: italic;
+}
+
+.dash-add-coach-btn {
+  margin-top: 8px;
+  background: transparent;
+  border: 1px dashed #cbd5e1;
+  color: #64748b;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s;
+  width: 100%;
+  justify-content: center;
+}
+
+.dash-add-coach-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--primary-soft);
+}
+
+.dash-empty-col {
+  padding: 20px 16px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+/* ── Archived Column ─────────────────────────────────────────────────────── */
+
+.dash-archived-col {
+  border-color: #e2e8f0;
+  opacity: 0.85;
+}
+
+.dash-archived-col .dash-season-col-header {
+  background: #f1f5f9;
+}
+
+.dash-archived-col .dash-season-col-title {
+  color: #94a3b8;
+}
+
+.dash-archived-col .dash-season-col-title i {
+  color: #94a3b8;
+}
+
+.dash-archived-season-group {
+  padding: 0 16px;
+}
+
+.dash-archived-season-group + .dash-archived-season-group {
+  border-top: 1px solid #f1f5f9;
+}
+
+.dash-archived-season-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #cbd5e1;
+  padding: 10px 0 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dash-archived-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid #f8fafc;
+  gap: 8px;
+}
+
+.dash-archived-row:last-child { border-bottom: none; }
+
+.dash-archived-sport-name {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #94a3b8;
+  text-decoration: line-through;
+}
+
+/* ── Error & Toast ───────────────────────────────────────────────────────── */
+
+.dash-error {
+  padding: 32px;
+  text-align: center;
+  color: #ef4444;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.dash-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 0.25s, transform 0.25s;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  white-space: nowrap;
+}
+
+.dash-toast-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.dash-toast-success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.dash-toast-error   { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+</style>
