@@ -1,0 +1,75 @@
+<script>
+// ── Global State (JS_Init owns these) ─────────────────────────────────────────
+window.DIRECTORY_DATA = null;
+window.ROSTER_CACHE   = {};
+
+(function () {
+  console.log("App Shell ready. Starting background tasks...");
+
+  // Hide the loading screen, then kick off background data fetching
+  setTimeout(() => {
+    const loader = document.getElementById('loading-screen');
+    if (loader) {
+      loader.classList.add('loader-hidden');
+      setTimeout(() => loader.style.display = 'none', 900);
+    }
+
+    fetchMasterDirectory();
+    startBackgroundPrefetch();
+  }, 2000);
+})();
+
+/**
+ * Fetches the full master directory for the current school and stores it globally.
+ * This runs once after page load so modal searches have zero server latency.
+ */
+function fetchMasterDirectory() {
+  const school = window.GLOBAL_SCHOOL;
+  console.log("🔄 Fetching directory for school:", school);
+  console.log("🔄 Type of school:", typeof school);
+
+  google.script.run
+    .withSuccessHandler(function (data) {
+      console.log("📦 Raw data received:", data);
+      console.log("📦 Type:", typeof data);
+      console.log("📦 Is array:", Array.isArray(data));
+      console.log("📦 Length:", data ? data.length : "null/undefined");
+      
+      if (data && data.length > 0) {
+        window.DIRECTORY_DATA = data;
+        console.log("✅ Directory ready (" + data.length + " rows)");
+      } else {
+        console.error("❌ Server returned null or empty directory data");
+      }
+    })
+    .withFailureHandler(function (err) {
+      console.error("❌ Directory sync failed:", err.message);
+    })
+    .getDirectoryData(school);
+}
+
+/**
+ * Staggered pre-fetch of all sport rosters into ROSTER_CACHE.
+ * Requests are spaced 1500ms apart to stay under Google's rate limits.
+ */
+function startBackgroundPrefetch() {
+  if (!window.SEASON_DATA_CONFIG || !window.GLOBAL_SCHOOL) {
+    console.warn("Pre-fetch aborted: Missing config or school.");
+    return;
+  }
+
+  const allSports = Object.values(window.SEASON_DATA_CONFIG)
+    .flatMap(season => season.sports || []);
+
+  allSports.forEach((sport, index) => {
+    setTimeout(() => {
+      if (window.ROSTER_CACHE[sport]) return; // Already cached
+
+      console.log("📡 Pre-fetching:", sport);
+      google.script.run
+        .withSuccessHandler(data => { window.ROSTER_CACHE[sport] = data; })
+        .getMergedSportData(window.GLOBAL_SCHOOL, sport);
+    }, index * 1500);
+  });
+}
+</script>
