@@ -1,0 +1,505 @@
+<script>
+/**
+ * Handles sidebar sport selection.
+ */
+function handleSportClick(element, season, sport) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  if (element) element.classList.add('active');
+
+  document.getElementById('welcome-screen').style.display = 'none';
+  document.getElementById('sport-view').style.display     = 'block';
+  document.getElementById('dashboard-view').style.display = 'none';
+  document.getElementById('active-sport-title').innerText = sport;
+
+  // Store the current season so renderRosterTables can use the correct column headers
+  window.ACTIVE_SEASON = season;
+
+  updatePeriodBanner();
+
+  if (window.ROSTER_CACHE[sport]) {
+    renderRosterTables(window.ROSTER_CACHE[sport]);
+    return;
+  }
+
+  document.getElementById('roster-tables-container').innerHTML = `
+    <div class="text-center p-5">
+      <div class="spinner-small" style="margin: 0 auto;"></div>
+      <p class="mt-3 text-muted">Retrieving ${sport} Roster...</p>
+    </div>`;
+
+  google.script.run
+    .withSuccessHandler(data => {
+      window.ROSTER_CACHE[sport] = data;
+      renderRosterTables(data);
+    })
+    .withFailureHandler(err => {
+      document.getElementById('roster-tables-container').innerHTML = `
+        <div class="alert alert-danger m-4">
+          <i class="fas fa-exclamation-triangle"></i> Error loading ${sport}: ${err.message}
+        </div>`;
+    })
+    .getMergedSportData(window.GLOBAL_SCHOOL, sport);
+}
+
+// ─── Render Functions ─────────────────────────────────────────────────────────
+
+function renderRosterTables(dataArr) {
+  const container = document.getElementById('roster-tables-container');
+  container.innerHTML = '';
+
+  const levels = ['Varsity', 'Junior Varsity', 'Freshman', 'Dropped'];
+
+  levels.forEach(level => {
+    const filteredRows = dataArr
+      ? dataArr
+          .filter(row => String(row[1]).trim() === level)
+          .sort((a, b) => String(a[2] || '').localeCompare(String(b[2] || '')))
+      : [];
+    const section      = document.createElement('div');
+    section.className  = 'level-section mb-5';
+
+    // Section header
+    const headerRow         = document.createElement('div');
+    headerRow.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin: 25px 0 10px 5px;';
+
+    const titleContainer         = document.createElement('div');
+    titleContainer.style.cssText = 'display: flex; align-items: center; gap: 10px;';
+
+    const title         = document.createElement('h4');
+    title.style.cssText = `margin: 0; font-weight: 700; font-size: 1.1rem; color: ${level === 'Dropped' ? '#ef4444' : 'var(--primary-color)'};`;
+    title.innerText     = level;
+
+    const countBadge         = document.createElement('span');
+    countBadge.style.cssText = 'background: #f1f5f9; color: #64748b; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid #e2e8f0;';
+    countBadge.innerText     = filteredRows.length;
+
+    titleContainer.appendChild(title);
+    titleContainer.appendChild(countBadge);
+    headerRow.appendChild(titleContainer);
+
+    // Right-side button group: Add (active levels) + Copy IDs (all levels)
+    const btnGroup         = document.createElement('div');
+    btnGroup.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+
+    if (level !== 'Dropped') {
+      const addBtn     = document.createElement('button');
+      addBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Add';
+      addBtn.className = 'add-student-btn';
+      addBtn.onclick   = () => openAddStudentModal(level);
+      btnGroup.appendChild(addBtn);
+    }
+
+    // Copy IDs button — always shown, disabled when no students
+    const copyBtn     = document.createElement('button');
+    copyBtn.className = 'add-student-btn ic-copy-btn';
+    copyBtn.title     = `Copy ${level} student IDs for IC Ad Hoc filter`;
+    copyBtn.innerHTML = '<i class="fa-solid fa-copy"></i> Copy IDs';
+    if (filteredRows.length === 0) {
+      copyBtn.disabled = true;
+      copyBtn.style.opacity = '0.4';
+    } else {
+      copyBtn.onclick = () => copyLevelIDs(filteredRows, level);
+    }
+    btnGroup.appendChild(copyBtn);
+    headerRow.appendChild(btnGroup);
+
+    section.appendChild(headerRow);
+
+    if (filteredRows.length > 0) {
+      const tableWrapper = document.createElement('div');
+      tableWrapper.id    = 'wrapper-' + level.replace(/\s+/g, '');
+      section.appendChild(tableWrapper);
+      buildModernTable([null].concat(filteredRows), tableWrapper, 'table-' + level.replace(/\s+/g, ''), {
+        autoHeight: true,
+        colMap: buildRosterColMap(window.ACTIVE_SEASON || 'SPRING', dataArr)
+      });
+    } else {
+      const emptyDiv         = document.createElement('div');
+      emptyDiv.style.cssText = 'padding: 20px; background: #f8f9fa; border: 1px dashed #ccc; border-radius: 8px; text-align: center; color: #888;';
+      emptyDiv.innerText     = `No students currently in ${level}.`;
+      section.appendChild(emptyDiv);
+    }
+
+    container.appendChild(section);
+  });
+}
+
+// ─── Period Header Map ────────────────────────────────────────────────────────
+
+const PERIOD_HEADER_MAP = {
+  'S1 - 6 Week':  'S1_6WK',
+  'S1 - 12 Week': 'S1_12WK',
+  'S1 - Finals':  'S1_FINALS',
+  'S2 - 6 Week':  'S2_6WK',
+  'S2 - 12 Week': 'S2_12WK',
+  'S2 - Finals':  'S2_FINALS'
+};
+
+// Date column indices (0-based), matching Code.gs constants
+const TABLE_COL_DATE_ADDED   = 27;
+const TABLE_COL_DATE_MOVED   = 28;
+const TABLE_COL_DATE_DROPPED = 29;
+
+// ─── Table Builder ────────────────────────────────────────────────────────────
+
+function buildModernTable(dataArr, target, tableId, options = {}) {
+  const container = (typeof target === 'string') ? document.getElementById(target) : target;
+  if (!container || !dataArr || dataArr.length <= 1) return;
+
+  const { autoHeight = false, maxHeight = null, colMap = null } = options;
+  const viewportClass = autoHeight ? 'table-viewport-auto' : 'table-viewport';
+  const styleAttr     = maxHeight ? `style="max-height: ${maxHeight};"` : '';
+
+  const activePeriod = getActivePeriod();
+
+  // Build header row — prepend an expand column
+  const expandTh   = `<th class="col-expand"></th>`;
+  const headerHtml = colMap
+    ? colMap.map(m => {
+        return `<th class="${m.className || ''}" style="text-align: ${m.align || 'left'}">${m.header}</th>`;
+      }).join('')
+    : dataArr[1] ? dataArr[1].map(h => `<th>${h}</th>`).join('') : '';
+
+  const totalCols = (colMap ? colMap.length : 0) + 1; // +1 for expand column
+
+  let html = `<div class="${viewportClass}" ${styleAttr}>
+                <table class="roster-table" id="${tableId}">
+                  <thead><tr>${expandTh}${headerHtml}</tr></thead>
+                  <tbody>`;
+
+  for (let i = 1; i < dataArr.length; i++) {
+    const row     = dataArr[i];
+    const rowId   = String(row[0] || '').trim();
+    const safeId  = rowId.replace(/[^a-zA-Z0-9]/g, '_');
+
+    // Date values for this row
+    const dateAdded   = row[TABLE_COL_DATE_ADDED]   || '';
+    const dateMoved   = row[TABLE_COL_DATE_MOVED]   || '';
+    const dateDropped = row[TABLE_COL_DATE_DROPPED] || '';
+    const hasDates    = dateAdded || dateMoved || dateDropped;
+
+    // Expand chevron cell — only show if there are dates to show
+    const chevronCell = hasDates
+      ? `<td class="col-expand">
+           <button class="row-expand-btn" onclick="toggleRowDetail('detail-${safeId}', this)"
+                   title="View date history" aria-expanded="false">
+             <i class="fa-solid fa-chevron-right row-expand-chevron"></i>
+           </button>
+         </td>`
+      : `<td class="col-expand"></td>`;
+
+    // Data cells
+    let dataCells = '';
+    if (colMap) {
+      colMap.forEach(config => {
+        const cellValue = (typeof config.formatter === 'function')
+          ? config.formatter(row, i - 1)
+          : (row[config.index] || '');
+        dataCells += `<td style="text-align: ${config.align || 'left'}">${cellValue}</td>`;
+      });
+    } else {
+      row.forEach(cell => { dataCells += `<td>${cell || ''}</td>`; });
+    }
+
+    html += `<tr class="roster-data-row">${chevronCell}${dataCells}</tr>`;
+
+    // Detail row (hidden by default) — only injected if there are dates
+    if (hasDates) {
+      const datePills = buildDatePills(dateAdded, dateMoved, dateDropped);
+      html += `
+        <tr class="row-detail-row" id="detail-${safeId}" style="display:none;">
+          <td></td>
+          <td colspan="${totalCols - 1}">
+            <div class="row-detail-inner">
+              <span class="row-detail-label">
+                <i class="fa-solid fa-clock-rotate-left"></i> Roster History
+              </span>
+              ${datePills}
+            </div>
+          </td>
+        </tr>`;
+    }
+  }
+
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+}
+
+/**
+ * Builds the date pill HTML for the expandable row detail.
+ */
+function buildDatePills(dateAdded, dateMoved, dateDropped) {
+  let html = '';
+
+  if (dateAdded) {
+    html += `<span class="date-pill date-pill-added">
+               <i class="fa-solid fa-user-plus"></i>
+               <span class="date-pill-label">Added</span>
+               ${dateAdded}
+             </span>`;
+  }
+  if (dateMoved) {
+    html += `<span class="date-pill date-pill-moved">
+               <i class="fa-solid fa-arrow-right-arrow-left"></i>
+               <span class="date-pill-label">Last Moved</span>
+               ${dateMoved}
+             </span>`;
+  }
+  if (dateDropped) {
+    html += `<span class="date-pill date-pill-dropped">
+               <i class="fa-solid fa-user-xmark"></i>
+               <span class="date-pill-label">Dropped</span>
+               ${dateDropped}
+             </span>`;
+  }
+
+  return html;
+}
+
+/**
+ * Toggles the detail row open/closed and animates the chevron.
+ */
+function toggleRowDetail(detailRowId, btn) {
+  const detailRow = document.getElementById(detailRowId);
+  if (!detailRow) return;
+
+  const isOpen    = detailRow.style.display !== 'none';
+  detailRow.style.display = isOpen ? 'none' : 'table-row';
+
+  const chevron = btn.querySelector('.row-expand-chevron');
+  if (chevron) chevron.classList.toggle('rotated', !isOpen);
+  btn.setAttribute('aria-expanded', String(!isOpen));
+}
+
+// ─── Filter ───────────────────────────────────────────────────────────────────
+
+function filterRoster() {
+  const filter = document.getElementById('rosterSearch').value.toUpperCase();
+  document.querySelectorAll('.roster-table').forEach(table => {
+    Array.from(table.querySelectorAll('tr.roster-data-row')).forEach(tr => {
+      const td = tr.querySelector('td:nth-child(2)'); // skip expand column
+      const matches = td && (td.textContent || td.innerText).toUpperCase().includes(filter);
+      tr.style.display = matches ? '' : 'none';
+
+      // Also hide/show the paired detail row
+      const btn    = tr.querySelector('.row-expand-btn');
+      const safeId = btn ? btn.getAttribute('onclick').match(/detail-([^']+)/)?.[1] : null;
+      if (safeId) {
+        const detailRow = document.getElementById('detail-' + safeId);
+        if (detailRow && !matches) detailRow.style.display = 'none';
+      }
+    });
+  });
+}
+
+// ─── Student Action Helpers ───────────────────────────────────────────────────
+
+function sendUpdate(payload) {
+  const sport = payload.sport;
+  if (!sport) { alert('Error: No active sport found.'); return; }
+
+  google.script.run
+    .withSuccessHandler(updatedData => {
+      window.ROSTER_CACHE[sport] = updatedData;
+      renderRosterTables(updatedData);
+    })
+    .withFailureHandler(err => {
+      console.error('Update failed:', err);
+      alert('Update failed: ' + err.message);
+    })
+    .updateStudentData(payload);
+}
+
+function getCurrentSport() {
+  return document.getElementById('active-sport-title').innerText;
+}
+
+function quickMove(id, currentLevel, direction) {
+  const hierarchy    = ['Freshman', 'Junior Varsity', 'Varsity'];
+  const currentIndex = hierarchy.indexOf(currentLevel.trim());
+  const newIndex     = direction === 'UP' ? currentIndex + 1 : currentIndex - 1;
+  if (newIndex < 0 || newIndex >= hierarchy.length) return;
+  const newLevel = hierarchy[newIndex];
+  const label    = direction === 'UP' ? 'Move Up' : 'Move Down';
+  showSecretaryDateDialog({
+    title:        label,
+    message:      `When did this athlete move from <strong>${currentLevel}</strong> to <strong>${newLevel}</strong>?`,
+    confirmLabel: label,
+    confirmClass: 'sdd-btn-primary',
+    onConfirm: actionDate => sendUpdate({
+      school: window.GLOBAL_SCHOOL, sport: getCurrentSport(),
+      id, colIndex: 1, value: newLevel, action: 'MOVE', actionDate, loggedBy: window.USER_EMAIL
+    })
+  });
+}
+
+function quickDrop(id, name) {
+  showSecretaryDateDialog({
+    title:        'Drop Athlete',
+    message:      `When was the decision made to drop <strong>${name}</strong> from the program?`,
+    confirmLabel: 'Drop Athlete',
+    confirmClass: 'sdd-btn-danger',
+    onConfirm: actionDate => sendUpdate({
+      school: window.GLOBAL_SCHOOL, sport: getCurrentSport(),
+      id, colIndex: 1, value: 'Dropped', action: 'DROP', actionDate, loggedBy: window.USER_EMAIL
+    })
+  });
+}
+
+function promptRestore(id, name) {
+  // First pick the level, then show the date dialog
+  const choice   = prompt(`Restore ${name} to which level?\n\n1: Varsity\n2: Junior Varsity\n3: Freshman`, '1');
+  const levelMap = { '1': 'Varsity', '2': 'Junior Varsity', '3': 'Freshman' };
+  const newLevel = levelMap[choice];
+  if (!newLevel) return;
+  showSecretaryDateDialog({
+    title:        'Restore Athlete',
+    message:      `When was <strong>${name}</strong> restored to <strong>${newLevel}</strong>?`,
+    confirmLabel: 'Restore',
+    confirmClass: 'sdd-btn-restore',
+    onConfirm: actionDate => sendUpdate({
+      school: window.GLOBAL_SCHOOL, sport: getCurrentSport(),
+      id, colIndex: 1, value: newLevel, action: 'RESTORE', actionDate, loggedBy: window.USER_EMAIL
+    })
+  });
+}
+
+// ─── Secretary Date Dialog ────────────────────────────────────────────────────
+
+/**
+ * Shows a light-mode date confirmation dialog for secretary actions.
+ * Mirrors the coach's showDateOverlay but styled for the desktop secretary view.
+ *
+ * @param {object} opts
+ *   title        - dialog heading
+ *   message      - descriptive text (may include HTML like <strong>)
+ *   confirmLabel - text for the confirm button
+ *   confirmClass - CSS class controlling confirm button color
+ *   onConfirm    - callback(dateString) where dateString is "M/D/YYYY"
+ */
+function showSecretaryDateDialog(opts) {
+  // Create overlay if it doesn't exist yet
+  let overlay = document.getElementById('secretary-date-dialog');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'secretary-date-dialog';
+    overlay.className = 'sdd-backdrop';
+    overlay.innerHTML = `
+      <div class="sdd-card">
+        <div class="sdd-title"></div>
+        <div class="sdd-message"></div>
+        <label class="sdd-label" for="sdd-date-input">Date</label>
+        <input type="date" id="sdd-date-input" class="sdd-date-input">
+        <div class="sdd-actions">
+          <button class="sdd-cancel-btn">Cancel</button>
+          <button class="sdd-confirm-btn"></button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+
+  const today    = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+
+  overlay.querySelector('.sdd-title').innerText    = opts.title;
+  overlay.querySelector('.sdd-message').innerHTML  = opts.message;
+
+  const dateInput = overlay.querySelector('#sdd-date-input');
+  dateInput.value = todayStr;
+  dateInput.max   = todayStr;
+
+  const confirmBtn = overlay.querySelector('.sdd-confirm-btn');
+  confirmBtn.innerText = opts.confirmLabel;
+  confirmBtn.className = 'sdd-confirm-btn ' + (opts.confirmClass || 'sdd-btn-primary');
+
+  const close = () => { overlay.style.display = 'none'; };
+
+  confirmBtn.onclick = () => {
+    const val = dateInput.value;
+    if (!val) { dateInput.focus(); return; }
+    const [y, m, d] = val.split('-');
+    close();
+    opts.onConfirm(`${parseInt(m)}/${parseInt(d)}/${y}`);
+  };
+
+  overlay.querySelector('.sdd-cancel-btn').onclick = close;
+
+  // Close on backdrop click
+  overlay.onclick = e => { if (e.target === overlay) close(); };
+
+  overlay.style.display = 'flex';
+  dateInput.focus();
+}
+
+function toggleSpecificWaiver(studentId, colNum, isChecked) {
+  sendUpdate({
+    school:   window.GLOBAL_SCHOOL,
+    sport:    getCurrentSport(),
+    id:       studentId,
+    colIndex: colNum - 1,
+    value:    isChecked
+  });
+}
+
+// ─── IC Ad Hoc Export ─────────────────────────────────────────────────────────
+
+/**
+ * Copies all student IDs for a given level to the clipboard as a
+ * comma-separated list, ready to paste into IC's Ad Hoc student ID filter.
+ */
+function copyLevelIDs(rows, level) {
+  const ids = rows
+    .map(row => String(row[0]).trim())
+    .filter(id => id && id !== 'undefined');
+
+  if (ids.length === 0) return;
+
+  const text = ids.join(', ');
+
+  navigator.clipboard.writeText(text).then(() => {
+    showICCopyToast(level, ids.length);
+  }).catch(() => {
+    // Fallback for browsers that block clipboard API
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed; opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showICCopyToast(level, ids.length);
+  });
+}
+
+function showICCopyToast(level, count) {
+  const existing = document.getElementById('ic-copy-toast');
+  if (existing) existing.remove();
+
+  const toast       = document.createElement('div');
+  toast.id          = 'ic-copy-toast';
+  toast.style.cssText = `
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: #f0fdf4; color: #15803d;
+    border: 1px solid #bbf7d0;
+    padding: 10px 20px; border-radius: 10px;
+    font-size: 0.875rem; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+    z-index: 9999; opacity: 0;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    white-space: nowrap;
+    transition: opacity 0.25s, transform 0.25s;`;
+  toast.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${count} ${level} ID${count !== 1 ? 's' : ''} copied — paste into IC Ad Hoc filter`;
+  document.body.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.style.opacity  = '1';
+    toast.style.transform = 'translateX(-50%) translateY(0)';
+  });
+  setTimeout(() => {
+    toast.style.opacity   = '0';
+    toast.style.transform = 'translateX(-50%) translateY(20px)';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+</script>
