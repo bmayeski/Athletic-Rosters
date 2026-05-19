@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+
+    <script>
+      window.GLOBAL_SCHOOL      = "<?= currentSchool ?>";
+      window.ACTIVE_SPORTS      = <?!= JSON.stringify(activeSports) ?>;
+      window.SEASON_DATA_CONFIG = <?!= JSON.stringify(seasonData) ?>;
+      window.CALENDAR_DATA      = <?!= JSON.stringify(calendarData) ?>;
+      window.USER_ROLE          = "<?= userRole ?>";
+      window.USER_EMAIL         = "<?= userEmail ?>";
+    </script>
+
+    <?!= include('JS_Init'); ?>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <style>
+      :root {
+        --primary-color: <?= config.primaryColor ?>;
+        --primary-soft:  <?= config.primaryColor ?>30;
+      }
+    </style>
+
+    <?!= include('Stylesheet_Globals'); ?>
+    <?!= include('Stylesheet_Main'); ?>
+    <?!= include('Stylesheet_Sidebar'); ?>
+    <?!= include('Stylesheet_Table'); ?>
+    <?!= include('Stylesheet_Modals'); ?>
+    <?!= include('Stylesheet_Dashboard'); ?>
+    <?!= include('Stylesheet_CoachView'); ?>
+
+  </head>
+  <body>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" style="
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: white;
+      z-index: 9999;
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+    ">
+      <img src="<?= config.logoUrl ?>" style="height: 80px; margin-bottom: 20px; opacity: 0.9;">
+      <div class="spinner"></div>
+      <h2 style="margin-top: 24px; color: #1e293b; font-family: sans-serif; font-weight: 700; margin-bottom: 8px;">
+        <?= config.name ?> Roster Manager
+      </h2>
+      <p style="color: #64748b; font-family: sans-serif;">Loading...</p>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- SECRETARY VIEW (Desktop)                                           -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div id="secretary-view-wrapper" style="display:none;">
+
+    <div class="app-container">
+
+      <nav class="sidebar">
+        <div class="sidebar-brand-container">
+          <img src="<?= config.logoUrl ?>" alt="School Logo" class="school-logo">
+          <div class="brand-text-stack admin-only-trigger" style="cursor: pointer;">
+            <span class="school-name" style="color: <?= config.primaryColor ?>;">
+              <?= config.name ?>
+            </span>
+            <span class="app-title">Roster Manager</span>
+          </div>
+          <button class="sidebar-logout-btn" onclick="adminLogout()" title="Sign out">
+            <i class="fa-solid fa-right-from-bracket"></i>
+          </button>
+        </div>
+
+        <!-- Admin nav group -->
+        <div id="group-admin" class="nav-group">
+          <div class="nav-header"><i class="fa-solid fa-gauge-high"></i> ADMIN</div>
+          <a href="#" class="nav-item active" onclick="event.preventDefault(); showDashboard()">
+            <span>Dashboard</span>
+          </a>
+        </div>
+
+        <!-- Season nav groups — built from activeSports (Sports tab) -->
+        <? var seasons = ['FALL', 'WINTER', 'SPRING'];
+           var icons   = { FALL: 'fa-leaf', WINTER: 'fa-snowflake', SPRING: 'fa-droplet' };
+           for (var si = 0; si < seasons.length; si++) {
+             var seasonKey   = seasons[si];
+             var seasonIcon  = icons[seasonKey];
+             var sportsList  = activeSports[seasonKey] || [];
+        ?>
+          <div class="nav-group" id="group-<?= seasonKey ?>">
+            <div class="nav-header season-header" onclick="toggleSeason('<?= seasonKey ?>')">
+              <div class="season-header-content">
+                <span>
+                  <i class="fa-solid <?= seasonIcon ?>"></i>
+                  <?= seasonKey ?>
+                  <i class="fa-solid <?= seasonIcon ?>"></i>
+                </span>
+                <i class="fa-solid fa-chevron-down season-chevron" id="chevron-<?= seasonKey ?>"></i>
+              </div>
+            </div>
+            <div class="season-sports" id="sports-<?= seasonKey ?>">
+              <? for (var j = 0; j < sportsList.length; j++) {
+                   var sport = sportsList[j];
+              ?>
+                <a href="javascript:void(0)" class="nav-item"
+                   onclick="handleSportClick(this, '<?= seasonKey ?>', '<?= sport ?>')">
+                  <span><?= sport ?></span>
+                </a>
+              <? } ?>
+            </div>
+          </div>
+        <? } ?>
+      </nav>
+
+      <main class="content-area">
+        <div id="view-container" class="container-fluid p-4">
+
+          <!-- Welcome screen -->
+          <div id="welcome-screen" style="display:none;">
+            <div class="text-center mt-5">
+              <i class="fa-solid fa-circle-user fa-5x mb-3" style="color: var(--primary-soft)"></i>
+              <h2>Select a Sport</h2>
+              <p class="text-muted">Choose a program from the sidebar to manage rosters.</p>
+            </div>
+          </div>
+
+          <!-- Sport roster view -->
+          <div id="sport-view" style="display: none;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <h2 id="active-sport-title" class="fw-bold text-dark mb-0">Sport Name</h2>
+                <div id="active-period-banner" class="active-period-banner"></div>
+              </div>
+              <input type="text" id="rosterSearch" class="searchBar"
+                     placeholder="Search athletes by name..." onkeyup="filterRoster()">
+            </div>
+            <div id="roster-tables-container"></div>
+          </div>
+
+          <!-- Dashboard view -->
+          <div id="dashboard-view">
+            <!-- Rendered by JS_Dashboard.html showDashboard() -->
+          </div>
+
+        </div>
+      </main>
+    </div>
+
+    </div> <!-- end #secretary-view-wrapper -->
+
+    <!-- PIN / Role Select Screen (outside both view wrappers) -->
+    <div id="pin-screen" class="pin-screen">
+      <img src="<?= config.logoUrl ?>" class="pin-logo" alt="School Logo">
+      <div class="pin-school-name"><?= config.name ?></div>
+      <div class="pin-subtitle">Roster Manager</div>
+
+      <!-- Role selector — shown first -->
+      <div id="role-select-card" class="pin-card">
+        <h2>Who are you?</h2>
+        <p class="pin-role-prompt">Select your role to continue.</p>
+        <div class="pin-role-btns">
+          <button class="pin-role-btn" onclick="showPinEntry('admin')">
+            <i class="fa-solid fa-shield-halved"></i>
+            <span>Athletic Secretary</span>
+            <small>Admin access</small>
+          </button>
+          <button class="pin-role-btn" onclick="showPinEntry('coach')">
+            <i class="fa-solid fa-whistle"></i>
+            <span>Coach</span>
+            <small>Roster access</small>
+          </button>
+        </div>
+      </div>
+
+      <!-- PIN entry — shown after role is selected -->
+      <div id="pin-entry-card" class="pin-card" style="display:none;">
+        <button class="pin-back-btn" onclick="showRoleSelect()">
+          <i class="fa-solid fa-arrow-left"></i> Back
+        </button>
+        <h2 id="pin-entry-title">Enter Your PIN</h2>
+
+        <label class="pin-field-label" for="pin-input">4-Digit PIN</label>
+        <input type="tel" id="pin-input" class="pin-input"
+               maxlength="4" placeholder="····"
+               onkeyup="handlePinKeyup(event)"
+               inputmode="numeric" pattern="[0-9]*">
+
+        <button id="pin-submit-btn" class="pin-submit-btn" onclick="submitPIN()">
+          Enter
+        </button>
+
+        <div id="pin-error" class="pin-error"></div>
+      </div>
+    </div> <!-- end #pin-screen -->
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- COACH VIEW (Mobile)                                                -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div id="coach-view-wrapper">
+
+    <div id="coach-app" class="coach-view" style="display: none;">
+
+      <div class="coach-header">
+        <div class="coach-header-left">
+          <img src="<?= config.logoUrl ?>" class="coach-header-logo" alt="Logo">
+          <div>
+            <div class="coach-header-title" id="coach-header-name"><?= config.name ?></div>
+            <div class="coach-header-sport" id="coach-header-sport">—</div>
+          </div>
+        </div>
+        <button class="coach-logout-btn" onclick="coachLogout()">
+          <i class="fa-solid fa-right-from-bracket"></i> Switch
+        </button>
+      </div>
+
+      <div class="coach-period-switcher-wrapper">
+        <div class="coach-period-switcher" id="coach-period-switcher"></div>
+      </div>
+
+      <div class="coach-search-wrapper">
+        <input type="text" id="coach-search" class="coach-search-input"
+               placeholder="Search athletes by name..."
+               onkeyup="coachFilterRoster()">
+      </div>
+
+      <div id="coach-roster-container"></div>
+
+      <!-- Loading overlay shown during server updates -->
+      <div id="coach-update-overlay" style="
+        display: none;
+        position: fixed; inset: 0;
+        background: rgba(15, 23, 42, 0.7);
+        z-index: 200;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 12px;
+      ">
+        <div class="spinner" style="border-top-color: var(--primary-color);"></div>
+        <span style="color: #f1f5f9; font-size: 0.9rem; font-weight: 600;">Saving...</span>
+      </div>
+
+      <!-- Date confirmation overlay -->
+      <div id="coach-date-overlay" class="cdo-backdrop" style="display:none;">
+        <div class="cdo-card">
+          <div class="cdo-title">Confirm Action</div>
+          <div class="cdo-message"></div>
+          <label class="cdo-label">Date</label>
+          <input type="date" class="cdo-date-input">
+          <div class="cdo-actions">
+            <button class="cdo-cancel-btn">Cancel</button>
+            <button class="cdo-confirm-btn"></button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    </div> <!-- end #coach-view-wrapper -->
+
+    <!-- History Log Modal -->
+    <div id="history-modal" class="hist-modal-backdrop" style="display:none;">
+      <div class="hist-modal">
+        <div class="hist-modal-header">
+          <div class="hist-modal-title">
+            <i class="fa-solid fa-clock-rotate-left"></i> Roster History Log
+          </div>
+          <button class="hist-modal-close" onclick="closeHistoryModal()">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <div class="hist-modal-filters">
+          <select id="history-sport-filter" class="hist-filter-select" onchange="filterHistoryLog()">
+            <option value="">All Sports</option>
+          </select>
+          <div class="hist-search-wrapper">
+            <i class="fa-solid fa-magnifying-glass hist-search-icon"></i>
+            <input type="text" id="history-search" class="hist-filter-input"
+                   placeholder="Search by name, sport, action..."
+                   oninput="filterHistoryLog()">
+          </div>
+        </div>
+        <div id="history-modal-body" class="hist-modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Add Student Modal (shared by both views) -->
+    <div id="addStudentModal" class="modal-overlay">
+      <div class="modal-content bulk-modal">
+        <div class="modal-header">
+          <h3 id="modalTitle">Add Students</h3>
+          <button class="close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="search-section">
+            <div class="search-box-wrapper">
+              <input type="text" id="directorySearch"
+                     placeholder="Enter Names or IDs (separate with spaces/commas)..."
+                     onkeyup="handleSearchKeyup(event)">
+              <button onclick="performDirectorySearch()" class="search-trigger-btn">
+                <i class="fas fa-search"></i>
+              </button>
+            </div>
+            <div id="searchResults" class="results-list"></div>
+          </div>
+          <div class="queue-section">
+            <h4 class="queue-title">Students to be Added:</h4>
+            <div id="selectedQueue" class="queue-list">
+              <p class="text-muted empty-queue-msg">No students selected yet.</p>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+          <button id="saveRosterBtn" class="btn-primary" onclick="saveBulkRoster()" disabled>
+            Save All to Roster
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </body>
+
+  <?!= include('JS_Table'); ?>
+  <?!= include('JS_Mapping'); ?>
+  <?!= include('JS_Modals'); ?>
+  <?!= include('JS_Dashboard'); ?>
+  <?!= include('JS_CoachView'); ?>
+
+  <script>
+    // ── Calendar Helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Parses a "YYYY-MM-DD" string into a local-midnight Date.
+     * Using new Date('YYYY-MM-DD') parses as UTC midnight, which shifts the
+     * date one day earlier in Pacific time — this avoids that bug.
+     */
+    function parseLocalDate(str) {
+      const [y, m, d] = str.split('-').map(Number);
+      return new Date(y, m - 1, d); // month is 0-based
+    }
+
+    function isDateRangeActive(start, end) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return today >= parseLocalDate(start) && today <= parseLocalDate(end);
+    }
+
+    function getActivePeriod() {
+      return window.CALENDAR_DATA.gradingPeriods.find(p =>
+        isDateRangeActive(p.start, p.end)
+      ) || null;
+    }
+
+    function isPeriodActive(key) {
+      const period = window.CALENDAR_DATA.gradingPeriods.find(p => p.key === key);
+      return period ? isDateRangeActive(period.start, period.end) : false;
+    }
+
+    function isPeriodEnded(key) {
+      const period = window.CALENDAR_DATA.gradingPeriods.find(p => p.key === key);
+      if (!period) return false;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return today > parseLocalDate(period.end);
+    }
+
+    function updatePeriodBanner() {
+      const banner = document.getElementById('active-period-banner');
+      if (!banner) return;
+      const period = getActivePeriod();
+      if (period) {
+        const start = parseLocalDate(period.start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const end   = parseLocalDate(period.end).toLocaleDateString('en-US',   { month: 'short', day: 'numeric', year: 'numeric' });
+        banner.innerHTML = `
+          <span class="period-badge">
+            <i class="fa-solid fa-calendar-check"></i>
+            Active Period: <strong>${period.label}</strong>
+            <span class="period-dates">${start} – ${end}</span>
+          </span>`;
+      } else {
+        banner.innerHTML = `
+          <span class="period-badge period-badge-none">
+            <i class="fa-solid fa-calendar-xmark"></i>
+            No active grading period
+          </span>`;
+      }
+    }
+
+    // ── Secretary: Season Collapse ────────────────────────────────────────────
+
+    function toggleSeason(seasonKey) {
+      const sports  = document.getElementById('sports-' + seasonKey);
+      const chevron = document.getElementById('chevron-' + seasonKey);
+      if (!sports || !chevron) return;
+      const isOpen = sports.classList.contains('expanded');
+      if (isOpen) {
+        sports.classList.remove('expanded');
+        chevron.classList.remove('rotated');
+      } else {
+        sports.classList.add('expanded');
+        chevron.classList.add('rotated');
+      }
+    }
+
+    // ── Secretary: View switching ─────────────────────────────────────────────
+
+    function showWelcomeScreen() {
+      document.getElementById('welcome-screen').style.display  = 'block';
+      document.getElementById('sport-view').style.display      = 'none';
+      document.getElementById('dashboard-view').style.display  = 'none';
+    }
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+
+    (function init() {
+      // Check for a saved admin session
+      const adminSession = getSavedAdminSession();
+      if (adminSession) {
+        window.ADMIN_NAME = adminSession.name || '';
+        window.ADMIN_ROLE = adminSession.role || '';
+        launchSecretaryView();
+        return;
+      }
+
+      // Check for a saved coach session
+      const coachSession = getSavedCoachSession();
+      if (coachSession) {
+        const sport  = coachSession.sport;
+        const season = coachSession.season || getSeasonForSport(sport);
+        loadCoachView(coachSession.name, sport, season);
+        return;
+      }
+
+      // No session — show the role selector
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('pin-screen').style.display     = 'flex';
+    })();
+  </script>
+
+</html>
