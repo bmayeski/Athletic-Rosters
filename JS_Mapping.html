@@ -1,0 +1,284 @@
+<script>
+/**
+ * Renders the Manage column buttons (move up/down, drop, restore).
+ */
+function renderManageStatus(row) {
+  const id        = String(row[0]).trim();
+  const level     = String(row[1] || "").trim();
+  const firstName = row[3] || "";
+  const lastName  = row[2] || "";
+  const safeName  = `${firstName} ${lastName}`.replace(/'/g, "\\'");
+
+  if (!id || id === "undefined") return '<span style="color:#ccc">No ID</span>';
+
+  const isDropped = level === 'Dropped';
+  const canRaise  = level === 'Junior Varsity' || level === 'Freshman';
+  const canLower  = level === 'Varsity'        || level === 'Junior Varsity';
+
+  if (isDropped) {
+    return `
+      <div style="display: flex; justify-content: center;">
+        <button class="add-student-btn" onclick="promptRestore('${id}', '${safeName}')">
+          <i class="fa-solid fa-rotate-left"></i> Restore
+        </button>
+      </div>`;
+  }
+
+  return `
+    <div style="display: flex; gap: 5px; justify-content: center;">
+      <button class="add-student-btn"
+              style="border-color: ${canRaise ? '#10b981' : '#e2e8f0'}; color: ${canRaise ? '#10b981' : '#cbd5e1'};"
+              ${canRaise ? `onclick="quickMove('${id}', '${level}', 'UP')"` : 'disabled'}>
+        <i class="fa-solid fa-arrow-up"></i>
+      </button>
+      <button class="add-student-btn"
+              style="border-color: ${canLower ? '#f59e0b' : '#e2e8f0'}; color: ${canLower ? '#f59e0b' : '#cbd5e1'};"
+              ${canLower ? `onclick="quickMove('${id}', '${level}', 'DOWN')"` : 'disabled'}>
+        <i class="fa-solid fa-arrow-down"></i>
+      </button>
+      <button class="add-student-btn" style="border-color: #ef4444; color: #ef4444;"
+              onclick="quickDrop('${id}', '${safeName}')">
+        <i class="fa-solid fa-user-xmark"></i>
+      </button>
+    </div>`;
+}
+
+/**
+ * Renders a grading period cell with metrics grid, eligibility badge,
+ * Qualify checkbox (top), and Waiver checkbox (bottom).
+ *
+ * Checkbox lock rules:
+ *   - Qualify: disabled if student is not ineligible OR if the period has ended
+ *   - Waiver:  disabled if Qualify is not checked OR if the period has ended
+ *
+ * @param {Array}  row        - The full student data row
+ * @param {number} startIdx   - Column index where GPA, Conduct, Passing, Classes begin
+ * @param {number} qualifyIdx - Column index of the qualify boolean for this period
+ * @param {number} waiverIdx  - Column index of the waiver boolean for this period
+ * @param {number} statusIdx  - Column index of the eligibility status string
+ * @param {string} periodKey  - CALENDAR_DATA key for this period (e.g. 'S1_6WK')
+ */
+function renderMetricGroupWithStatus(row, startIdx, qualifyIdx, waiverIdx, statusIdx, periodKey, hasAnyData) {
+  const studentId = row[0];
+  const gpa       = row[startIdx];
+  const conduct   = row[startIdx + 1];
+  const passing   = row[startIdx + 2];
+  const classes   = row[startIdx + 3];
+
+  const hasData          = (gpa !== "" && gpa !== null);
+  const isQualifyChecked = String(row[qualifyIdx]).toUpperCase() === 'TRUE';
+  const isWaiverChecked  = String(row[waiverIdx]).toUpperCase() === 'TRUE';
+  const periodStatus     = String(row[statusIdx] || "").toUpperCase();
+  const isIneligible     = hasData && periodStatus !== 'ELIGIBLE';
+  const periodEnded      = isPeriodEnded(periodKey);
+
+  // Qualify: disabled if not ineligible OR period has ended
+  const qualifyDisabled = !isIneligible || periodEnded;
+
+  // Waiver: disabled if Qualify not checked OR period has ended
+  const waiverDisabled  = !isQualifyChecked || periodEnded;
+
+  // No data + other students have data in this slot = NO RECORD (new/transfer student)
+  // No data + nobody has data in this slot yet = PENDING (period not yet populated)
+  let badgeHtml;
+  if (isWaiverChecked) {
+    badgeHtml = `<span class="eligibility-status status-blue">WAIVER</span>`;
+  } else if (!hasData) {
+    badgeHtml = hasAnyData
+      ? `<span class="eligibility-status status-none">NO RECORD</span>`
+      : `<span class="eligibility-status status-none">PENDING</span>`;
+  } else {
+    badgeHtml = periodStatus === 'ELIGIBLE'
+      ? `<span class="eligibility-status status-green">ELIGIBLE</span>`
+      : `<span class="eligibility-status status-red">INELIGIBLE</span>`;
+  }
+
+  // Formatted display values
+  const gpaVal = hasData ? parseFloat(gpa).toFixed(2) : '-';
+  const conVal = hasData ? conduct : '-';
+  const pssVal = hasData ? passing : '-';
+  const clsVal = hasData ? classes : '-';
+
+  // Tooltip for locked checkboxes
+  const lockTitle = periodEnded ? ' title="This grading period has ended"' : '';
+
+  return `
+    <div class="grading-period-unit">
+      ${badgeHtml}
+
+      <div class="metrics-grid">
+        <div class="metric-item">
+          <span class="m-label">GPA</span>
+          <span class="${hasData && gpa < 2 ? 'text-danger' : 'text-success'}">${gpaVal}</span>
+        </div>
+        <div class="metric-item">
+          <span class="m-label">CONDUCT</span>
+          <span class="${hasData && conduct >= 2 ? 'text-danger' : 'text-success'}">${conVal}</span>
+        </div>
+        <div class="metric-item">
+          <span class="m-label">PASSING</span>
+          <span class="${hasData && passing < 4 ? 'text-danger' : 'text-success'}">${pssVal}</span>
+        </div>
+        <div class="metric-item">
+          <span class="m-label">CLASSES</span>
+          <span class="${hasData && classes < 4 ? 'text-danger' : 'text-success'}">${clsVal}</span>
+        </div>
+      </div>
+
+      <div class="waiver-toggle-box">
+        <div class="checkbox-row"${lockTitle}>
+          <input type="checkbox"
+                 id="q-${studentId}-${qualifyIdx}"
+                 ${isQualifyChecked ? 'checked' : ''}
+                 ${qualifyDisabled ? 'disabled' : ''}
+                 onchange="toggleSpecificWaiver('${studentId}', ${qualifyIdx + 1}, this.checked)">
+          <label for="q-${studentId}-${qualifyIdx}"
+                 style="opacity: ${qualifyDisabled ? '0.4' : '1'};">Qualify</label>
+        </div>
+        <div class="checkbox-row"${lockTitle}>
+          <input type="checkbox"
+                 id="w-${studentId}-${waiverIdx}"
+                 ${isWaiverChecked ? 'checked' : ''}
+                 ${waiverDisabled ? 'disabled' : ''}
+                 onchange="toggleSpecificWaiver('${studentId}', ${waiverIdx + 1}, this.checked)">
+          <label for="w-${studentId}-${waiverIdx}"
+                 style="opacity: ${waiverDisabled ? '0.4' : '1'};">Waiver</label>
+        </div>
+      </div>
+    </div>`;
+}
+
+/**
+ * Builds the roster column map dynamically based on the sport's season.
+ *
+ * The spreadsheet always stores period data in the same 3 fixed slots:
+ *   Slot 1 (cols 5–11):  GPA/Conduct/Passing/Classes/Qualify/Waiver/Status
+ *   Slot 2 (cols 12–18): same
+ *   Slot 3 (cols 19–25): same
+ *
+ * Which grading period each slot *represents* depends on the season,
+ * defined by CALENDAR_DATA.seasonPeriods:
+ *   FALL:   ['S2_FINALS', 'S1_6WK',  'S1_12WK']  → slot1=S2 Finals, slot2=S1 6-Week, slot3=S1 12-Week
+ *   WINTER: ['S1_12WK',  'S1_FINALS','S2_6WK' ]  → slot1=S1 12-Week, slot2=S1 Finals, slot3=S2 6-Week
+ *   SPRING: ['S1_FINALS','S2_6WK',  'S2_12WK' ]  → slot1=S1 Finals, slot2=S2 6-Week, slot3=S2 12-Week
+ *
+ * The header for each column is pulled from CALENDAR_DATA.gradingPeriods[key].label
+ * so it always matches the label defined in Code.gs — no duplication.
+ *
+ * Active period highlighting: the header gets col-active-period only if today
+ * falls within that period's date range. If no period is currently active
+ * (e.g. an off-season sport), nothing is highlighted.
+ *
+ * Spreadsheet column reference (0-based):
+ *  0     = Student ID
+ *  1     = Level
+ *  2     = Last Name
+ *  3     = First Name
+ *  4     = Grade
+ *  5–8   = Slot 1: GPA, Conduct, Passing, Classes
+ *  9     = Slot 1 Qualify
+ *  10    = Slot 1 Waiver
+ *  11    = Slot 1 Status
+ *  12–15 = Slot 2: GPA, Conduct, Passing, Classes
+ *  16    = Slot 2 Qualify
+ *  17    = Slot 2 Waiver
+ *  18    = Slot 2 Status
+ *  19–22 = Slot 3: GPA, Conduct, Passing, Classes
+ *  23    = Slot 3 Qualify
+ *  24    = Slot 3 Waiver
+ *  25    = Slot 3 Status
+ *  26    = Overall Waiver Used flag
+ *
+ * @param {string} season - 'FALL', 'WINTER', or 'SPRING'
+ * @returns {Array} column map array for use by the table renderer
+ */
+function buildRosterColMap(season, allRows) {
+  // Resolve the 3 period keys for this season, falling back to SPRING if unknown
+  const seasonKey  = (season || 'SPRING').toUpperCase();
+  const periodKeys = (window.CALENDAR_DATA.seasonPeriods || {})[seasonKey]
+                   || ['S1_FINALS', 'S2_6WK', 'S2_12WK'];
+
+  // Look up the label for each key from the gradingPeriods array
+  function labelFor(key) {
+    const p = (window.CALENDAR_DATA.gradingPeriods || []).find(p => p.key === key);
+    return p ? p.label : key;
+  }
+
+  // Determine which period key (if any) is currently active so we can highlight it.
+  // Returns null if today is outside all of this season's periods.
+  function activeKeyForSeason() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (const key of periodKeys) {
+      const p = (window.CALENDAR_DATA.gradingPeriods || []).find(p => p.key === key);
+      if (p && today >= parseLocalDate(p.start) && today <= parseLocalDate(p.end)) return key;
+    }
+    return null; // off-season — nothing highlighted
+  }
+
+  const activeKey = activeKeyForSeason();
+
+  // Fixed slot definitions: [startIdx, qualifyIdx, waiverIdx, statusIdx]
+  const slots = [
+    [5,  9,  10, 11],
+    [12, 16, 17, 18],
+    [19, 23, 24, 25]
+  ];
+
+  // For each slot, check if ANY row in the full roster has a GPA value.
+  // If at least one student has data, missing students show NO RECORD.
+  // If nobody has data, the period hasn't been populated yet — show PENDING.
+  const slotHasData = slots.map(([startIdx]) =>
+    Array.isArray(allRows) && allRows.some(row =>
+      row && row[startIdx] !== '' && row[startIdx] !== null && row[startIdx] !== undefined
+    )
+  );
+
+  const periodCols = periodKeys.map((key, i) => {
+    const [startIdx, qualifyIdx, waiverIdx, statusIdx] = slots[i];
+    const hasAnyData = slotHasData[i];
+    return {
+      header:    labelFor(key),
+      className: 'col-grading-period' + (key === activeKey ? ' col-active-period' : ''),
+      align:     'center',
+      formatter: (row) => renderMetricGroupWithStatus(row, startIdx, qualifyIdx, waiverIdx, statusIdx, key, hasAnyData)
+    };
+  });
+
+  return [
+    {
+      header:    'Student Information',
+      className: 'col-student-info',
+      align:     'left',
+      formatter: (row) => {
+        const usedWaiver = String(row[26]).toUpperCase() === 'TRUE';
+        const waiverIcon = usedWaiver
+          ? `<div class="waiver-icon-container"><i class="fa-solid fa-person-running waiver-icon-large" title="Waiver Used"></i></div>`
+          : '';
+        return `
+          <div class="student-cell-container">
+            <div class="student-text-block">
+              <p class="name-main">${row[2]}, ${row[3]}</p>
+              <p class="row-subtext">ID: ${row[0]} (${row[4]})</p>
+            </div>
+            ${waiverIcon}
+          </div>`;
+      }
+    },
+    ...periodCols,
+    {
+      header:    'Manage',
+      className: 'col-manage',
+      align:     'center',
+      formatter: (row) => renderManageStatus(row)
+    }
+  ];
+}
+
+/**
+ * Legacy constant kept for any code that still references ROSTER_COL_MAP directly.
+ * Defaults to SPRING periods (S1 Finals / S2 6-Week / S2 12-Week).
+ * Prefer calling buildRosterColMap(season) wherever the season is known.
+ */
+const ROSTER_COL_MAP = buildRosterColMap('SPRING');
+</script>
