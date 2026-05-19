@@ -1,0 +1,676 @@
+<style>
+/* ── Coach View Root ─────────────────────────────────────────────────────── */
+
+.coach-view {
+  background: #0f172a;
+  min-height: 100vh;
+  font-family: var(--font-main);
+  color: #f8fafc;
+}
+
+/* ── PIN Screen ──────────────────────────────────────────────────────────── */
+
+.pin-screen {
+  min-height: 100vh;
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  font-family: var(--font-main);
+}
+
+.pin-logo {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 8px rgba(255,255,255,0.2));
+  margin-bottom: 16px;
+}
+
+.pin-school-name {
+  font-size: 1.3rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+  color: var(--primary-color);
+  filter: drop-shadow(0 0 2px black);
+}
+
+.pin-subtitle {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-bottom: 32px;
+}
+
+.pin-card {
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+}
+
+.pin-card h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0 0 20px 0;
+  text-align: center;
+}
+
+.pin-field-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.pin-input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 1.8rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-align: center;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+}
+
+.pin-input:focus {
+  border-color: var(--primary-color);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.pin-submit-btn {
+  width: 100%;
+  padding: 16px;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: opacity 0.2s;
+}
+
+.pin-submit-btn:hover   { opacity: 0.9; }
+.pin-submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.pin-error {
+  color: #f87171;
+  font-size: 0.85rem;
+  text-align: center;
+  margin-top: 12px;
+  min-height: 20px;
+}
+
+/* ── Coach App Header ────────────────────────────────────────────────────── */
+
+.coach-header {
+  background: #1e293b;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 1px solid #334155;
+}
+
+.coach-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.coach-header-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 2px black);
+}
+
+.coach-header-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #f8fafc;
+  line-height: 1.1;
+}
+
+.coach-header-sport {
+  font-size: 0.75rem;
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.coach-logout-btn {
+  background: #334155;
+  border: none;
+  color: #94a3b8;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Period Pill Switcher ────────────────────────────────────────────────── */
+
+.coach-period-switcher-wrapper {
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+  padding: 10px 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Hide scrollbar but keep functionality */
+  scrollbar-width: none;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.coach-period-switcher-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+.coach-period-switcher {
+  display: flex;
+  gap: 8px;
+  width: max-content;
+}
+
+.period-pill {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.period-pill:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+/* Active pill uses school primary color */
+.period-pill.period-pill-active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+/* ── Search Bar ──────────────────────────────────────────────────────────── */
+
+.coach-search-wrapper {
+  padding: 12px 16px;
+  background: #0f172a;
+}
+
+.coach-search-input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #f8fafc;
+  font-size: 0.95rem;
+  box-sizing: border-box;
+}
+
+.coach-search-input:focus {
+  border-color: var(--primary-color);
+  outline: none;
+}
+
+/* ── Level Section ───────────────────────────────────────────────────────── */
+
+.coach-level-section {
+  padding: 0 16px;
+  margin-bottom: 8px;
+}
+
+.coach-level-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0 8px 0;
+}
+
+.coach-level-title {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #64748b;
+}
+
+.coach-level-count {
+  background: #1e293b;
+  color: #64748b;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid #334155;
+}
+
+.coach-add-btn {
+  background: transparent;
+  border: 1px solid var(--primary-color);
+  color: var(--primary-color);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.coach-add-btn:hover {
+  background: var(--primary-color);
+  color: white;
+}
+
+/* ── Student Card ────────────────────────────────────────────────────────── */
+
+.coach-card {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  border: 1px solid #334155;
+  transition: border-color 0.15s;
+}
+
+.coach-card:active {
+  border-color: var(--primary-color);
+}
+
+.coach-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.coach-card-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  line-height: 1.2;
+}
+
+.coach-card-meta {
+  font-size: 0.72rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.coach-eligibility-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+/* ── Metrics Row ─────────────────────────────────────────────────────────── */
+
+.coach-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.coach-metric-cell {
+  background: #0f172a;
+  border-radius: 8px;
+  padding: 6px 4px;
+  text-align: center;
+}
+
+.coach-metric-label {
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.coach-metric-value {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+/* ── Action Buttons ──────────────────────────────────────────────────────── */
+
+.coach-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0; /* prevents buttons from being squished by qualify text */
+}
+
+.coach-action-btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+  min-height: 36px;
+}
+
+.coach-btn-up      { background: #064e3b; color: #10b981; border: 1px solid #065f46; }
+.coach-btn-down    { background: #451a03; color: #f59e0b; border: 1px solid #78350f; }
+.coach-btn-drop    { background: #450a0a; color: #f87171; border: 1px solid #7f1d1d; }
+.coach-btn-restore { background: #1e3a5f; color: #60a5fa; border: 1px solid #1d4ed8; }
+
+.coach-btn-up:hover      { background: #065f46; }
+.coach-btn-down:hover    { background: #78350f; }
+.coach-btn-drop:hover    { background: #7f1d1d; }
+.coach-btn-restore:hover { background: #1d3461; }
+
+.coach-action-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* ── Qualify Footer Line ─────────────────────────────────────────────────── */
+
+.coach-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.coach-card-qualify-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.coach-card-qualify-line span {
+  word-break: break-word; /* wraps long text without breaking the icon out */
+}
+
+.coach-card-qualify-line i {
+  flex-shrink: 0; /* icon never moves — stays pinned to the left */
+}
+
+.qualify-yes { color: #10b981; }
+.qualify-no  { color: #f87171; }
+
+/* ── Empty & No-Period States ────────────────────────────────────────────── */
+
+.coach-empty {
+  text-align: center;
+  padding: 20px;
+  color: #475569;
+  font-size: 0.85rem;
+  background: #1e293b;
+  border-radius: 12px;
+  border: 1px dashed #334155;
+  margin-bottom: 10px;
+}
+
+.coach-no-period {
+  margin: 16px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+/* ── Date Confirmation Overlay ───────────────────────────────────────────── */
+
+.cdo-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  z-index: 300;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.cdo-card {
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 24px 20px 20px;
+  width: 100%;
+  max-width: 340px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  border: 1px solid #334155;
+}
+
+.cdo-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #f1f5f9;
+  margin-bottom: 8px;
+}
+
+.cdo-message {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+
+.cdo-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.cdo-date-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #f1f5f9;
+  font-size: 1rem;
+  box-sizing: border-box;
+  margin-bottom: 20px;
+  -webkit-appearance: none;
+}
+
+.cdo-date-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.cdo-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.cdo-cancel-btn {
+  flex: 1;
+  padding: 11px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #94a3b8;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cdo-confirm-btn {
+  flex: 2;
+  padding: 11px;
+  border-radius: 10px;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.cdo-confirm-btn:hover { opacity: 0.85; }
+
+.overlay-btn-primary {
+  background: var(--primary-color);
+  color: white;
+}
+
+.overlay-btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.overlay-btn-restore {
+  background: #22c55e;
+  color: white;
+}
+
+/* ── Card Bottom Row (qualify line + actions on same line) ───────────────── */
+
+.coach-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0 2px;
+}
+
+.coach-card-bottom .coach-card-qualify-line {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Card Date Footer ────────────────────────────────────────────────────── */
+
+.coach-card-date-footer {
+  font-size: 0.68rem;
+  color: #475569;
+  padding: 6px 12px 8px;
+  border-top: 1px solid #1e293b;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ── Role Selector ───────────────────────────────────────────────────────── */
+
+.pin-role-prompt {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin: 0 0 20px;
+  text-align: center;
+}
+
+.pin-role-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pin-role-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+  background: white;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+  width: 100%;
+}
+
+.pin-role-btn:hover {
+  border-color: var(--primary-color);
+  background: var(--primary-soft, #f0f4ff);
+}
+
+.pin-role-btn i {
+  font-size: 1.4rem;
+  color: var(--primary-color);
+  width: 28px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.pin-role-btn span {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1e293b;
+  display: block;
+}
+
+.pin-role-btn small {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  display: block;
+  margin-top: 1px;
+}
+
+/* ── PIN Back Button ─────────────────────────────────────────────────────── */
+
+.pin-back-btn {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.pin-back-btn:hover { color: #1e293b; }
+</style>
