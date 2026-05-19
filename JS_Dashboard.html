@@ -1,0 +1,771 @@
+<script>
+// ── Dashboard State ───────────────────────────────────────────────────────────
+
+let dashboardData   = null;  // { sports: [], coaches: [], admins: [] }
+let editingCoachPin = null;  // PIN of coach being edited, or null
+let openSports      = {};    // tracks which sport accordions are open: { 'Football': true }
+
+// ── Entry Point ───────────────────────────────────────────────────────────────
+
+function showDashboard() {
+  document.getElementById('welcome-screen').style.display = 'none';
+  document.getElementById('sport-view').style.display     = 'none';
+  document.getElementById('dashboard-view').style.display = 'block';
+
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const dashNav = document.querySelector('[onclick*="showDashboard"]');
+  if (dashNav) dashNav.classList.add('active');
+
+  loadDashboard();
+}
+
+function loadDashboard() {
+  document.getElementById('dashboard-view').innerHTML = `
+    <div style="text-align:center; padding: 60px 20px; color: #64748b;">
+      <div class="spinner" style="margin: 0 auto 16px;"></div>
+      <p>Loading dashboard...</p>
+    </div>`;
+
+  google.script.run
+    .withSuccessHandler(data => {
+      dashboardData = data;
+      renderDashboard();
+    })
+    .withFailureHandler(err => {
+      document.getElementById('dashboard-view').innerHTML = `
+        <div class="dash-error">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          Failed to load dashboard: ${err.message}
+        </div>`;
+    })
+    .getDashboardData(window.GLOBAL_SCHOOL);
+}
+
+// ── Main Render ───────────────────────────────────────────────────────────────
+
+function renderDashboard() {
+  const view = document.getElementById('dashboard-view');
+  view.innerHTML = `
+    <div class="dash-header">
+      <div class="dash-header-row">
+        <div>
+          <h2 class="dash-title">
+            <i class="fa-solid fa-gauge-high"></i> Dashboard
+          </h2>
+          <p class="dash-subtitle">Manage sports programs and coaching staff for ${window.GLOBAL_SCHOOL}</p>
+        </div>
+        <button class="dash-btn-sm dash-history-btn" onclick="openHistoryModal()">
+          <i class="fa-solid fa-clock-rotate-left"></i> View History Log
+        </button>
+      </div>
+    </div>
+    <div class="dash-season-columns">
+      ${renderSeasonColumn('FALL',   'fa-leaf')}
+      ${renderSeasonColumn('WINTER', 'fa-snowflake')}
+      ${renderSeasonColumn('SPRING', 'fa-droplet')}
+      ${renderArchivedColumn()}
+    </div>`;
+}
+
+// ── Season Column ─────────────────────────────────────────────────────────────
+
+function renderSeasonColumn(season, icon) {
+  // Only show active sports in the season columns
+  const sports     = dashboardData.sports.filter(s => s.season === season && s.active);
+  const sportsHtml = sports.length === 0
+    ? `<div class="dash-empty-col">No sports configured yet.</div>`
+    : sports.map(sport => renderSportRow(sport)).join('');
+
+  return `
+    <div class="dash-season-col" id="col-${season}">
+
+      <div class="dash-season-col-header">
+        <div class="dash-season-col-title">
+          <i class="fa-solid ${icon}"></i>
+          ${season.charAt(0) + season.slice(1).toLowerCase()}
+        </div>
+        <button class="dash-btn-sm" onclick="openAddSportForm('${season}')">
+          <i class="fa-solid fa-plus"></i> Sport
+        </button>
+      </div>
+
+      <!-- Add Sport inline form -->
+      <div id="add-sport-form-${season}" class="dash-inline-form" style="display:none;">
+        <select id="sport-select-${season}" class="dash-input-sm"
+                onchange="handleSportSelectChange('${season}')">
+          <option value="">— Select sport —</option>
+          ${getAvailableSportOptions(season)}
+          <option value="__other__">— Other (custom) —</option>
+        </select>
+        <div id="custom-sport-wrapper-${season}" style="display:none; margin-top:6px;">
+          <input type="text" id="custom-sport-${season}" class="dash-input-sm"
+                 placeholder="Custom sport name">
+        </div>
+        <div class="dash-inline-form-actions">
+          <button class="dash-btn-cancel"  onclick="closeAddSportForm('${season}')">Cancel</button>
+          <button class="dash-btn-confirm" onclick="submitAddSport('${season}')">Add</button>
+        </div>
+        <div id="sport-msg-${season}" class="dash-inline-msg"></div>
+      </div>
+
+      <!-- Sports accordion list -->
+      <div id="sports-accordion-${season}">
+        ${sportsHtml}
+      </div>
+
+    </div>`;
+}
+
+// ── Sport Row with Coach Accordion ───────────────────────────────────────────
+
+function renderSportRow(sport) {
+  const isOpen     = openSports[sport.name] === true;
+  const coaches    = getCoachesForSport(sport.name);
+  const safeKey    = sport.name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '_');
+  const safeName   = sport.name.replace(/'/g, "\\'");
+
+  const coachRowsHtml = coaches.length === 0
+    ? `<div class="dash-no-coaches">No coaches assigned yet.</div>`
+    : coaches.map(coach => `
+        <div class="dash-coach-item">
+          <div class="dash-coach-item-info">
+            <span class="dash-coach-item-name">${coach.name}</span>
+            <span class="dash-pin-badge">
+              <i class="fa-solid fa-lock"></i> ${coach.pin}
+            </span>
+            <span class="dash-type-badge dash-type-${(coach.type || 'Head').toLowerCase()}">
+              ${coach.type === 'Assistant' ? 'Asst' : 'Head'}
+            </span>
+          </div>
+          <div class="dash-coach-item-actions">
+            <button class="dash-icon-btn dash-btn-edit"
+                    onclick="openEditCoach('${coach.pin}', '${safeName}')"
+                    title="Edit">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+            <button class="dash-icon-btn dash-btn-danger"
+                    onclick="confirmRemoveCoach('${coach.pin}', '${coach.name.replace(/'/g, "\\'")}')"
+                    title="Remove">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+        </div>`).join('');
+
+  return `
+    <div class="dash-sport-item ${sport.active ? '' : 'dash-sport-archived'}"
+         id="sport-item-${safeKey}">
+
+      <!-- Clickable sport header -->
+      <div class="dash-sport-item-header"
+           onclick="toggleSportAccordion('${safeName}', '${safeKey}')">
+        <div class="dash-sport-item-left">
+          <i class="fa-solid fa-chevron-right dash-sport-chevron ${isOpen ? 'rotated' : ''}"
+             id="chevron-${safeKey}"></i>
+          <span class="dash-sport-item-name">
+            ${sport.active ? '' : '<span class="dash-archived-tag">ARCHIVED</span>'}
+            ${sport.name}
+          </span>
+          ${coaches.length > 0
+            ? `<span class="dash-coach-count">${coaches.length}</span>`
+            : ''}
+        </div>
+        <div class="dash-sport-item-actions" onclick="event.stopPropagation()">
+          ${sport.active
+            ? `<button class="dash-icon-btn dash-btn-archive"
+                       onclick="confirmArchiveSport('${safeName}')"
+                       title="Archive">
+                 <i class="fa-solid fa-box-archive"></i>
+               </button>`
+            : `<button class="dash-icon-btn dash-btn-restore"
+                       onclick="submitReactivateSport('${sport.season}', '${safeName}')"
+                       title="Reactivate">
+                 <i class="fa-solid fa-rotate-left"></i>
+               </button>`
+          }
+        </div>
+      </div>
+
+      <!-- Accordion body -->
+      <div class="dash-sport-accordion ${isOpen ? 'open' : ''}"
+           id="accordion-${safeKey}">
+
+        <!-- Add / Edit Coach form (hidden by default) -->
+        <div id="coach-form-${safeKey}" class="dash-coach-form" style="display:none;">
+          <div class="dash-coach-form-title" id="cf-title-${safeKey}">Add Coach</div>
+          <input type="text" id="cf-name-${safeKey}"   class="dash-input-sm" placeholder="Full name">
+          <input type="tel"  id="cf-pin-${safeKey}"    class="dash-input-sm" placeholder="4-digit PIN"
+                 maxlength="4" inputmode="numeric" style="margin-top:6px;">
+          <input type="text" id="cf-sports-${safeKey}" class="dash-input-sm"
+                 placeholder="Sports (comma separated)" style="margin-top:6px;">
+          <select id="cf-type-${safeKey}" class="dash-input-sm" style="margin-top:6px;">
+            <option value="Head">Head Coach</option>
+            <option value="Assistant">Assistant Coach</option>
+          </select>
+          <div class="dash-inline-form-actions" style="margin-top:8px;">
+            <button class="dash-btn-cancel"  onclick="cancelCoachForm('${safeName}', '${safeKey}')">Cancel</button>
+            <button class="dash-btn-confirm" id="cf-submit-${safeKey}"
+                    onclick="submitCoachForm('${safeName}', '${safeKey}')">Add</button>
+          </div>
+          <div id="cf-msg-${safeKey}" class="dash-inline-msg"></div>
+        </div>
+
+        ${coachRowsHtml}
+
+        <button class="dash-add-coach-btn"
+                onclick="openAddCoachForm('${safeName}', '${safeKey}')">
+          <i class="fa-solid fa-plus"></i> Add Coach
+        </button>
+      </div>
+
+    </div>`;
+}
+
+// ── Archived Column ───────────────────────────────────────────────────────────
+
+function renderArchivedColumn() {
+  const seasons  = ['FALL', 'WINTER', 'SPRING'];
+  const icons    = { FALL: 'fa-leaf', WINTER: 'fa-snowflake', SPRING: 'fa-droplet' };
+  const archived = dashboardData.sports.filter(s => !s.active);
+
+  const bodyHtml = archived.length === 0
+    ? `<div class="dash-empty-col">No archived sports.</div>`
+    : seasons.map(season => {
+        const seasonArchived = archived.filter(s => s.season === season);
+        if (seasonArchived.length === 0) return '';
+        return `
+          <div class="dash-archived-season-group">
+            <div class="dash-archived-season-label">
+              <i class="fa-solid ${icons[season]}"></i>
+              ${season.charAt(0) + season.slice(1).toLowerCase()}
+            </div>
+            ${seasonArchived.map(sport => `
+              <div class="dash-archived-row">
+                <span class="dash-archived-sport-name">${sport.name}</span>
+                <button class="dash-icon-btn dash-btn-restore"
+                        onclick="submitReactivateSport('${sport.season}', '${sport.name.replace(/'/g, "\\'")}')"
+                        title="Reactivate">
+                  <i class="fa-solid fa-rotate-left"></i>
+                </button>
+              </div>`).join('')}
+          </div>`;
+      }).join('');
+
+  return `
+    <div class="dash-season-col dash-archived-col" id="col-ARCHIVED">
+      <div class="dash-season-col-header">
+        <div class="dash-season-col-title">
+          <i class="fa-solid fa-box-archive"></i> Archived
+        </div>
+      </div>
+      <div id="sports-accordion-ARCHIVED">
+        ${bodyHtml}
+      </div>
+    </div>`;
+}
+
+// ── Targeted Column Re-render ─────────────────────────────────────────────────
+
+/**
+ * Re-renders just one season column's sports list in place using in-memory
+ * dashboardData — no server round-trip, other columns untouched.
+ * Pass 'ARCHIVED' to rerender the archived column.
+ */
+function rerenderColumn(season) {
+  if (season === 'ARCHIVED') {
+    const container = document.getElementById('sports-accordion-ARCHIVED');
+    if (!container) return;
+
+    const seasons  = ['FALL', 'WINTER', 'SPRING'];
+    const icons    = { FALL: 'fa-leaf', WINTER: 'fa-snowflake', SPRING: 'fa-droplet' };
+    const archived = dashboardData.sports.filter(s => !s.active);
+
+    container.innerHTML = archived.length === 0
+      ? `<div class="dash-empty-col">No archived sports.</div>`
+      : seasons.map(season => {
+          const seasonArchived = archived.filter(s => s.season === season);
+          if (seasonArchived.length === 0) return '';
+          return `
+            <div class="dash-archived-season-group">
+              <div class="dash-archived-season-label">
+                <i class="fa-solid ${icons[season]}"></i>
+                ${season.charAt(0) + season.slice(1).toLowerCase()}
+              </div>
+              ${seasonArchived.map(sport => `
+                <div class="dash-archived-row">
+                  <span class="dash-archived-sport-name">${sport.name}</span>
+                  <button class="dash-icon-btn dash-btn-restore"
+                          onclick="submitReactivateSport('${sport.season}', '${sport.name.replace(/'/g, "\\'")}')"
+                          title="Reactivate">
+                    <i class="fa-solid fa-rotate-left"></i>
+                  </button>
+                </div>`).join('')}
+            </div>`;
+        }).join('');
+    return;
+  }
+
+  const accordion = document.getElementById('sports-accordion-' + season);
+  if (!accordion) return;
+
+  const sports = dashboardData.sports.filter(s => s.season === season && s.active);
+  accordion.innerHTML = sports.length === 0
+    ? `<div class="dash-empty-col">No sports configured yet.</div>`
+    : sports.map(sport => renderSportRow(sport)).join('');
+}
+
+/**
+ * Returns the season key for a given sport name by looking it up in dashboardData.
+ */
+function getSeasonForDashSport(sportName) {
+  const sport = dashboardData.sports.find(s => s.name === sportName);
+  return sport ? sport.season : null;
+}
+
+// ── Accordion ─────────────────────────────────────────────────────────────────
+
+function toggleSportAccordion(sportName, safeKey) {
+  openSports[sportName] = !openSports[sportName];
+  const accordion = document.getElementById('accordion-' + safeKey);
+  const chevron   = document.getElementById('chevron-' + safeKey);
+  if (accordion) accordion.classList.toggle('open', openSports[sportName]);
+  if (chevron)   chevron.classList.toggle('rotated', openSports[sportName]);
+}
+
+// ── Coach Helpers ─────────────────────────────────────────────────────────────
+
+function getCoachesForSport(sportName) {
+  if (!dashboardData || !dashboardData.coaches) return [];
+  return dashboardData.coaches.filter(coach =>
+    coach.sports.split(',')
+      .map(s => s.trim().toLowerCase())
+      .includes(sportName.toLowerCase())
+  );
+}
+
+function openAddCoachForm(sportName, safeKey) {
+  editingCoachPin = null;
+  document.getElementById(`cf-title-${safeKey}`).innerText  = 'Add Coach';
+  document.getElementById(`cf-submit-${safeKey}`).innerText = 'Add';
+  document.getElementById(`cf-name-${safeKey}`).value       = '';
+  document.getElementById(`cf-pin-${safeKey}`).value        = '';
+  document.getElementById(`cf-sports-${safeKey}`).value     = sportName;
+  document.getElementById(`cf-type-${safeKey}`).value       = 'Head';
+  document.getElementById(`cf-msg-${safeKey}`).innerText    = '';
+  document.getElementById(`coach-form-${safeKey}`).style.display = 'block';
+  document.getElementById(`cf-name-${safeKey}`).focus();
+}
+
+function openEditCoach(pin, sportName) {
+  const coach   = dashboardData.coaches.find(c => c.pin === pin);
+  if (!coach) return;
+  const safeKey = sportName.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '_');
+  editingCoachPin = pin;
+  // Make sure accordion is open
+  if (!openSports[sportName]) toggleSportAccordion(sportName, safeKey);
+  document.getElementById(`cf-title-${safeKey}`).innerText  = 'Edit Coach';
+  document.getElementById(`cf-submit-${safeKey}`).innerText = 'Save';
+  document.getElementById(`cf-name-${safeKey}`).value       = coach.name;
+  document.getElementById(`cf-pin-${safeKey}`).value        = coach.pin;
+  document.getElementById(`cf-sports-${safeKey}`).value     = coach.sports;
+  document.getElementById(`cf-type-${safeKey}`).value       = coach.type || 'Head';
+  document.getElementById(`cf-msg-${safeKey}`).innerText    = '';
+  document.getElementById(`coach-form-${safeKey}`).style.display = 'block';
+  document.getElementById(`cf-name-${safeKey}`).focus();
+}
+
+function cancelCoachForm(sportName, safeKey) {
+  editingCoachPin = null;
+  document.getElementById(`coach-form-${safeKey}`).style.display = 'none';
+  document.getElementById(`cf-msg-${safeKey}`).innerText         = '';
+}
+
+function submitCoachForm(sportName, safeKey) {
+  const name   = document.getElementById(`cf-name-${safeKey}`).value.trim();
+  const pin    = document.getElementById(`cf-pin-${safeKey}`).value.trim();
+  const sports = document.getElementById(`cf-sports-${safeKey}`).value.trim();
+  const type   = document.getElementById(`cf-type-${safeKey}`).value;
+  const msgEl  = document.getElementById(`cf-msg-${safeKey}`);
+
+  msgEl.innerText = '';
+  msgEl.className = 'dash-inline-msg';
+
+  if (!name)                 { msgEl.innerText = 'Name required.';            return; }
+  if (!/^\d{4}$/.test(pin)) { msgEl.innerText = 'PIN must be 4 digits.';     return; }
+  if (!sports)               { msgEl.innerText = 'At least one sport needed.'; return; }
+
+  msgEl.innerText = 'Saving...';
+
+  // Keep this sport's accordion open after re-render
+  openSports[sportName] = true;
+
+  const onResult = result => {
+    msgEl.className = 'dash-inline-msg ' + (result.success ? 'dash-msg-success' : 'dash-msg-error');
+    msgEl.innerText = result.message;
+    if (result.success) {
+      if (editingCoachPin) {
+        // Update coach in memory
+        const idx = dashboardData.coaches.findIndex(c => c.pin === editingCoachPin);
+        if (idx !== -1) dashboardData.coaches[idx] = { name, pin, sports, type };
+      } else {
+        // Add coach to memory
+        dashboardData.coaches.push({ name, pin, sports, type });
+      }
+      editingCoachPin = null;
+
+      // Re-render all columns this coach's sports touch
+      const affectedSeasons = new Set(
+        sports.split(',')
+          .map(s => getSeasonForDashSport(s.trim()))
+          .filter(Boolean)
+      );
+      affectedSeasons.forEach(season => rerenderColumn(season));
+      showDashToast(result.message, 'success');
+    }
+  };
+  const onError = err => {
+    msgEl.className = 'dash-inline-msg dash-msg-error';
+    msgEl.innerText = 'Error: ' + err.message;
+  };
+
+  if (editingCoachPin) {
+    google.script.run.withSuccessHandler(onResult).withFailureHandler(onError)
+      .updateCoach(window.GLOBAL_SCHOOL, editingCoachPin, name, pin, sports, type);
+  } else {
+    google.script.run.withSuccessHandler(onResult).withFailureHandler(onError)
+      .addCoach(window.GLOBAL_SCHOOL, name, pin, sports, type);
+  }
+}
+
+function confirmRemoveCoach(pin, name) {
+  if (!confirm(`Remove ${name}?\n\nThey will no longer be able to log in.`)) return;
+  google.script.run
+    .withSuccessHandler(result => {
+      if (result.success) {
+        // Find which seasons this coach's sports belong to before removing
+        const coach = dashboardData.coaches.find(c => c.pin === pin);
+        const affectedSeasons = new Set(
+          (coach ? coach.sports : '').split(',')
+            .map(s => getSeasonForDashSport(s.trim()))
+            .filter(Boolean)
+        );
+        // Remove from memory
+        dashboardData.coaches = dashboardData.coaches.filter(c => c.pin !== pin);
+        // Re-render affected columns
+        affectedSeasons.forEach(season => rerenderColumn(season));
+        showDashToast(result.message, 'success');
+      } else {
+        showDashToast(result.message, 'error');
+      }
+    })
+    .withFailureHandler(err => showDashToast('Error: ' + err.message, 'error'))
+    .removeCoach(window.GLOBAL_SCHOOL, pin);
+}
+
+// ── Add Sport Form ────────────────────────────────────────────────────────────
+
+function getAvailableSportOptions(season) {
+  const known  = (window.SEASON_DATA_CONFIG[season] || {}).sports || [];
+  const active = (dashboardData.sports || []).filter(s => s.active).map(s => s.name.toLowerCase());
+  return known
+    .filter(s => !active.includes(s.toLowerCase()))
+    .map(s => `<option value="${s}">${s}</option>`)
+    .join('');
+}
+
+function openAddSportForm(season) {
+  document.getElementById(`add-sport-form-${season}`).style.display          = 'block';
+  document.getElementById(`sport-select-${season}`).value                    = '';
+  document.getElementById(`custom-sport-wrapper-${season}`).style.display    = 'none';
+  document.getElementById(`sport-msg-${season}`).innerText                   = '';
+}
+
+function closeAddSportForm(season) {
+  document.getElementById(`add-sport-form-${season}`).style.display = 'none';
+}
+
+function handleSportSelectChange(season) {
+  const val = document.getElementById(`sport-select-${season}`).value;
+  document.getElementById(`custom-sport-wrapper-${season}`).style.display =
+    val === '__other__' ? 'block' : 'none';
+}
+
+function submitAddSport(season) {
+  const select = document.getElementById(`sport-select-${season}`).value;
+  const customEl = document.getElementById(`custom-sport-${season}`);
+  const custom = customEl ? customEl.value.trim() : '';
+  const msgEl  = document.getElementById(`sport-msg-${season}`);
+  const sport  = select === '__other__' ? custom : select;
+
+  msgEl.innerText = '';
+  if (!select)      { msgEl.innerText = 'Please select a sport.';     return; }
+  if (!sport)       { msgEl.innerText = 'Please enter a sport name.'; return; }
+
+  msgEl.innerText = 'Saving...';
+
+  google.script.run
+    .withSuccessHandler(result => {
+      msgEl.className = 'dash-inline-msg ' + (result.success ? 'dash-msg-success' : 'dash-msg-error');
+      msgEl.innerText = result.message;
+      if (result.success) {
+        // Update memory: add or re-activate sport
+        const existing = dashboardData.sports.find(
+          s => s.name.toLowerCase() === sport.toLowerCase()
+        );
+        if (existing) {
+          existing.active = true;
+        } else {
+          dashboardData.sports.push({ season, name: sport, active: true });
+        }
+        // Sort alphabetically so new sport appears in the right position
+        dashboardData.sports.sort((a, b) => a.name.localeCompare(b.name));
+        closeAddSportForm(season);
+        rerenderColumn(season);
+        refreshSidebar();
+        showDashToast(result.message, 'success');
+      }
+    })
+    .withFailureHandler(err => {
+      msgEl.className = 'dash-inline-msg dash-msg-error';
+      msgEl.innerText = 'Error: ' + err.message;
+    })
+    .addSport(window.GLOBAL_SCHOOL, season, sport);
+}
+
+// ── Archive / Reactivate ──────────────────────────────────────────────────────
+
+function confirmArchiveSport(sportName) {
+  if (!confirm(`Archive "${sportName}"?\n\nAll data is preserved. The sheet will be renamed to "ARCHIVED - ${sportName}".`)) return;
+  google.script.run
+    .withSuccessHandler(result => {
+      if (result.success) {
+        // Update memory
+        const sport = dashboardData.sports.find(s => s.name === sportName);
+        if (sport) {
+          const season = sport.season;
+          sport.active = false;
+          rerenderColumn(season);
+          rerenderColumn('ARCHIVED');
+          refreshSidebar();
+        }
+        showDashToast(result.message, 'success');
+      } else {
+        showDashToast(result.message, 'error');
+      }
+    })
+    .withFailureHandler(err => showDashToast('Error: ' + err.message, 'error'))
+    .archiveSport(window.GLOBAL_SCHOOL, sportName);
+}
+
+function submitReactivateSport(season, sportName) {
+  google.script.run
+    .withSuccessHandler(result => {
+      if (result.success) {
+        const sport = dashboardData.sports.find(s => s.name === sportName);
+        if (sport) sport.active = true;
+        rerenderColumn(season);
+        rerenderColumn('ARCHIVED');
+        refreshSidebar();
+        showDashToast(result.message, 'success');
+      } else {
+        showDashToast(result.message, 'error');
+      }
+    })
+    .withFailureHandler(err => showDashToast('Error: ' + err.message, 'error'))
+    .addSport(window.GLOBAL_SCHOOL, season, sportName);
+}
+
+// ── Sidebar Refresh ───────────────────────────────────────────────────────────
+
+function refreshSidebar() {
+  google.script.run
+    .withSuccessHandler(activeSports => {
+      window.ACTIVE_SPORTS = activeSports;
+      ['FALL', 'WINTER', 'SPRING'].forEach(season => {
+        const container = document.getElementById('sports-' + season);
+        if (!container) return;
+        container.innerHTML = (activeSports[season] || []).map(sport => `
+          <a href="javascript:void(0)" class="nav-item"
+             onclick="handleSportClick(this, '${season}', '${sport.replace(/'/g, "\\'")}')">
+            <span>${sport}</span>
+          </a>`).join('');
+      });
+    })
+    .withFailureHandler(err => console.error('Sidebar refresh failed:', err))
+    .getSportsForSchool(window.GLOBAL_SCHOOL);
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+
+function showDashToast(message, type) {
+  const existing = document.getElementById('dash-toast');
+  if (existing) existing.remove();
+  const toast       = document.createElement('div');
+  toast.id          = 'dash-toast';
+  toast.className   = 'dash-toast dash-toast-' + type;
+  toast.innerHTML   = `<i class="fa-solid ${type === 'success' ? 'fa-circle-check' : 'fa-circle-xmark'}"></i> ${message}`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.classList.add('dash-toast-visible'), 10);
+  setTimeout(() => {
+    toast.classList.remove('dash-toast-visible');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// ── History Log Modal ─────────────────────────────────────────────────────────
+
+let historyData     = null; // full log rows from server
+let historyFiltered = null; // currently filtered rows
+
+function openHistoryModal() {
+  document.getElementById('history-modal').style.display = 'flex';
+  loadHistoryLog();
+}
+
+function closeHistoryModal() {
+  document.getElementById('history-modal').style.display = 'none';
+}
+
+function loadHistoryLog() {
+  const body = document.getElementById('history-modal-body');
+  body.innerHTML = `
+    <div style="text-align:center; padding: 48px; color: #64748b;">
+      <div class="spinner" style="margin: 0 auto 16px;"></div>
+      <p>Loading history...</p>
+    </div>`;
+
+  google.script.run
+    .withSuccessHandler(data => {
+      historyData     = data;
+      historyFiltered = data;
+      populateHistorySportFilter(data);
+      renderHistoryTable(data);
+    })
+    .withFailureHandler(err => {
+      body.innerHTML = `
+        <div class="dash-error">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          Failed to load history: ${err.message}
+        </div>`;
+    })
+    .getHistoryLog(window.GLOBAL_SCHOOL);
+}
+
+function populateHistorySportFilter(data) {
+  const select  = document.getElementById('history-sport-filter');
+  const current = select.value;
+
+  // Collect unique sports from the data
+  const sports = [...new Set(data.map(row => String(row[3] || '').trim()))].filter(Boolean).sort();
+
+  select.innerHTML = '<option value="">All Sports</option>'
+    + sports.map(s => `<option value="${s}"${s === current ? ' selected' : ''}>${s}</option>`).join('');
+}
+
+function filterHistoryLog() {
+  const sport  = document.getElementById('history-sport-filter').value;
+  const search = document.getElementById('history-search').value.trim().toLowerCase();
+
+  historyFiltered = historyData.filter(row => {
+    const matchSport  = !sport  || String(row[3] || '').trim() === sport;
+    const matchSearch = !search || [row[1], row[2], row[3], row[4], row[5], row[6], row[8]]
+      .some(cell => String(cell || '').toLowerCase().includes(search));
+    return matchSport && matchSearch;
+  });
+
+  renderHistoryTable(historyFiltered);
+}
+
+function renderHistoryTable(rows) {
+  const body = document.getElementById('history-modal-body');
+
+  if (!rows || rows.length === 0) {
+    body.innerHTML = `
+      <div class="dash-empty" style="padding: 48px;">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+        No history entries found.
+      </div>`;
+    return;
+  }
+
+  const actionIcon = {
+    'ADD':     { icon: 'fa-user-plus',             cls: 'hist-action-add'     },
+    'MOVE':    { icon: 'fa-arrow-right-arrow-left', cls: 'hist-action-move'    },
+    'DROP':    { icon: 'fa-user-xmark',             cls: 'hist-action-drop'    },
+    'RESTORE': { icon: 'fa-rotate-left',            cls: 'hist-action-restore' }
+  };
+
+  const rowsHtml = rows.map(row => {
+    // Columns: Timestamp | Student ID | Student Name | Sport | Action | From Level | To Level | Action Date | Logged By
+    const timestamp   = row[0] ? new Date(row[0]).toLocaleString('en-US', {
+        month:    '2-digit',
+        day:      '2-digit',
+        year:     'numeric',
+        hour:     '2-digit',
+        minute:   '2-digit',
+        hour12:   true,
+        timeZone: 'America/Los_Angeles'
+      }) : '—';
+    const studentId   = row[1] || '—';
+    const studentName = row[2] || '—';
+    const sport       = row[3] || '—';
+    const action      = String(row[4] || '').toUpperCase();
+    const fromLevel   = row[5] || '—';
+    const toLevel     = row[6] || '—';
+    const rawActionDate = row[7] || '';
+    const actionDate  = rawActionDate && rawActionDate.includes('T')
+      ? new Date(rawActionDate).toLocaleDateString('en-US', {
+          month:    '2-digit',
+          day:      '2-digit',
+          year:     'numeric',
+          timeZone: 'America/Los_Angeles'
+        })
+      : rawActionDate || '—';
+    const loggedBy    = row[8] || '—';
+
+    const ai = actionIcon[action] || { icon: 'fa-circle-dot', cls: 'hist-action-other' };
+
+    const levelChange = action === 'ADD'
+      ? `<span class="hist-level-to">${toLevel}</span>`
+      : `<span class="hist-level-from">${fromLevel}</span>
+         <i class="fa-solid fa-arrow-right" style="font-size:0.6rem; color:#94a3b8;"></i>
+         <span class="hist-level-to">${toLevel}</span>`;
+
+    return `
+      <tr class="hist-row">
+        <td class="hist-td hist-td-date">${actionDate}</td>
+        <td class="hist-td">
+          <div class="hist-student-name">${studentName}</div>
+          <div class="hist-student-id">ID: ${studentId}</div>
+        </td>
+        <td class="hist-td hist-td-sport">${sport}</td>
+        <td class="hist-td">
+          <span class="hist-action-badge ${ai.cls}">
+            <i class="fa-solid ${ai.icon}"></i> ${action}
+          </span>
+        </td>
+        <td class="hist-td">
+          <div class="hist-level-change">${levelChange}</div>
+        </td>
+        <td class="hist-td hist-td-logged">${loggedBy}</td>
+        <td class="hist-td hist-td-ts">${timestamp}</td>
+      </tr>`;
+  }).join('');
+
+  body.innerHTML = `
+    <table class="hist-table">
+      <thead>
+        <tr>
+          <th class="hist-th">Action Date</th>
+          <th class="hist-th">Student</th>
+          <th class="hist-th">Sport</th>
+          <th class="hist-th">Action</th>
+          <th class="hist-th">Level Change</th>
+          <th class="hist-th">Logged By</th>
+          <th class="hist-th">Recorded</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>`;
+}
+
+</script>
