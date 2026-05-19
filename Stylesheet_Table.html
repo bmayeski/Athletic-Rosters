@@ -1,0 +1,345 @@
+<style>
+/* --- 1. Global Table Layout --- */
+.roster-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.9rem;
+  color: #334155;
+  table-layout: fixed;
+  margin-bottom: 0;
+}
+
+/* --- 2. Fixed Column Widths (Uniform across all tables) --- */
+.col-student-info   { width: 150px; }
+.col-grading-period { width: 230px; }
+.col-manage         { width: 110px; }
+
+/* --- 3. Headers (Sticky & Stacked) --- */
+.roster-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: #f8fafc;
+  padding: 8px;
+  text-align: left;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+  color: #64748b;
+  border-bottom: 2px solid #e2e8f0;
+  vertical-align: bottom;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Highlight the currently active grading period column header */
+.roster-table thead th.col-active-period {
+  // background-color: var(--primary-soft);
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+}
+
+/* --- 4. Row & Cell Styling --- */
+.roster-table tbody tr {
+  background-color: #ffffff;
+  transition: background-color 0.15s ease;
+}
+
+.roster-table tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+.roster-table td {
+  padding: 2px 12px !important;
+  border-bottom: 1px solid #edf2f7;
+  vertical-align: middle;
+  overflow: hidden;
+}
+
+/* Column Grouping Visuals */
+.roster-table td:nth-child(n+2),
+.roster-table th:nth-child(n+2) {
+  border-left: 2px solid #e2e8f0;
+}
+
+/* --- 5. Student Info Column & Waiver Icon --- */
+.student-cell-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 40px;
+}
+
+.student-text-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex-grow: 1;
+}
+
+.name-main {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  margin: 0 !important;
+}
+
+.row-subtext {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  margin: 2px 0 0 0 !important;
+}
+
+.waiver-icon-large {
+  color: var(--primary-color) !important;
+  font-size: 1.3rem !important;
+  margin-left: 10px;
+  flex-shrink: 0;
+}
+
+/* --- 6. Metric Groups & Grading Periods --- */
+.grading-period-unit {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 8px;
+  background: #f8fafc;
+  padding: 4px;
+  border-radius: 4px;
+  flex-grow: 1;
+}
+
+.metric-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.65rem;
+}
+
+.m-label {
+  color: #64748b;
+  font-weight: 600;
+}
+
+/* --- 7. Badges & Status Colors --- */
+.eligibility-status {
+  width: 68px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 2px 0;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.status-green { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+.status-red   { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+.status-blue  { background: #e2e9fe; color: #1c39b9; border: 1px solid #cad3fe; }
+.status-none  { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+
+.text-success { color: #16a34a !important; font-weight: bold; }
+.text-danger  { color: #dc2626 !important; font-weight: bold; }
+
+/* Stacks Qualify and Waiver checkboxes vertically */
+.waiver-toggle-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.65rem;
+  color: #64748b;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Keeps each checkbox and its label together as a unit */
+.checkbox-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+.waiver-toggle-box input[type="checkbox"] {
+  cursor: pointer;
+  margin: 0;
+  width: 13px;
+  height: 13px;
+}
+
+.waiver-toggle-box input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+
+.waiver-toggle-box label {
+  cursor: pointer;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* --- 8. Buttons & Search --- */
+.add-student-btn {
+  background-color: transparent;
+  color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.add-student-btn:hover:not(:disabled) {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.add-student-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.searchBar {
+  width: 100%;
+  max-width: 400px;
+  padding: 6px 12px;
+  margin-top: 4px;
+  margin-bottom: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+/* ── Expand Column ───────────────────────────────────────────────────────── */
+
+.col-expand {
+  width: 32px;
+  padding: 0 4px !important;
+  text-align: center;
+  border-left: none !important;
+}
+
+.row-expand-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 5px;
+  color: #94a3b8;
+  line-height: 1;
+  transition: background 0.1s, color 0.1s;
+}
+
+.row-expand-btn:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.row-expand-chevron {
+  font-size: 0.65rem;
+  transition: transform 0.2s;
+  display: block;
+}
+
+.row-expand-chevron.rotated {
+  transform: rotate(90deg);
+}
+
+/* ── Detail Row ──────────────────────────────────────────────────────────── */
+
+.row-detail-row td {
+  background: #f8fafc;
+  padding: 0 !important;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.row-detail-inner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 16px 4px 8px;
+}
+
+.row-detail-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+/* ── Date Pills ──────────────────────────────────────────────────────────── */
+
+.date-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.date-pill-label {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.date-pill-added {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.date-pill-moved {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.date-pill-dropped {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+/* ── IC Ad Hoc Copy Button ───────────────────────────────────────────────── */
+
+.ic-copy-btn {
+  color: #0369a1;
+  border-color: #0369a1;
+}
+
+.ic-copy-btn:hover:not(:disabled) {
+  background-color: #0369a1;
+  color: white;
+}
+</style>
