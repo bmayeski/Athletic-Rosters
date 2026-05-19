@@ -1,0 +1,313 @@
+<style>
+/* Modal Overlay */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(15, 23, 42, 0.7); /* Darker overlay for focus */
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+/* Modal Window - Widened for Bulk Workflow */
+.modal-content {
+  background: white;
+  width: 95%; 
+  max-width: 900px; /* Increased from 500px */
+  margin: 40px auto;
+  border-radius: 12px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh; /* Prevents modal from going off screen */
+  animation: modalSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalSlideIn {
+  from { transform: translateY(-30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-header { 
+  padding: 1.25rem 1.5rem; 
+  border-bottom: 1px solid #e2e8f0; 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+}
+
+.modal-header h3 { margin: 0; font-size: 1.25rem; font-weight: 700; color: #0f172a; }
+
+/* The Meat of the Modal */
+.modal-body {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr; /* Search gets slightly more room */
+  gap: 0; /* Removing gap to use borders instead */
+  overflow: hidden; /* Body handles children scrolling */
+}
+
+/* Common Section Styling */
+.search-section, .queue-section {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  height: 60vh; /* Fixed height for consistency */
+}
+
+.search-section { border-right: 1px solid #e2e8f0; }
+
+@media (max-width: 768px) {
+  .modal-body { grid-template-columns: 1fr; }
+  .search-section { border-right: none; border-bottom: 1px solid #e2e8f0; height: auto; }
+  .modal-content { margin: 10px auto; width: 98%; max-height: 95vh; }
+}
+
+/* Search Box Enhancements */
+.search-box-wrapper { 
+  display: flex; 
+  gap: 10px; 
+  margin-bottom: 1rem; 
+  flex-shrink: 0; 
+}
+
+#directorySearch { 
+  flex-grow: 1; 
+  padding: 12px 16px; 
+  border: 1px solid #cbd5e1; 
+  border-radius: 8px; 
+  font-size: 0.95rem;
+  transition: all 0.2s;
+}
+
+#directorySearch:focus { 
+  border-color: var(--primary-color); 
+  box-shadow: 0 0 0 3px var(--primary-soft); 
+  outline: none; 
+}
+
+/* Scrollable Lists */
+.results-list, .queue-list { 
+  flex-grow: 1;
+  overflow-y: auto; 
+  border: 1px solid #f1f5f9; 
+  border-radius: 8px; 
+  background: #f8fafc;
+}
+
+/* Result Rows */
+.result-item, .queue-item {
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center;
+  padding: 12px 16px; 
+  background: white;
+  border-bottom: 1px solid #f1f5f9;
+  gap: 12px;
+}
+
+.result-info { min-width: 0; /* Flexbox trick to allow text truncation */ }
+.result-name { font-weight: 600; color: #1e293b; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.result-id { font-size: 0.8rem; color: #64748b; }
+
+/* Queue Specifics */
+.queue-title { font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 10px; flex-shrink: 0;}
+
+.queue-item { background: #fff; border: 1px solid #e2e8f0; margin-bottom: 6px; border-radius: 6px; }
+
+/* Footer Styling */
+.modal-footer { 
+  padding: 1.25rem 1.5rem; 
+  border-top: 1px solid #e2e8f0; 
+  display: flex; 
+  justify-content: flex-end; 
+  gap: 12px;
+  background: #f8fafc;
+}
+
+.btn-primary, .btn-secondary {
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary { background: var(--primary-color); color: white; border: none; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary { background: white; border: 1px solid #cbd5e1; color: #475569; }
+.btn-secondary:hover { background: #f1f5f9; }
+
+/* ── Modal Footer Date Input ─────────────────────────────────────────────── */
+
+.modal-footer {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.modal-footer-date {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 4px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-date-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modal-date-label i { color: var(--primary-color); }
+
+.modal-date-input {
+  flex: 1;
+  max-width: 200px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  font-size: 0.88rem;
+  color: #1e293b;
+  background: white;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  -webkit-appearance: none;
+}
+
+.modal-date-input:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+  outline: none;
+}
+
+.modal-date-input-error {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 3px #fee2e2 !important;
+  animation: shake 0.3s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25%       { transform: translateX(-4px); }
+  75%       { transform: translateX(4px); }
+}
+
+.modal-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* ── Secretary Date Dialog ───────────────────────────────────────────────── */
+
+.sdd-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+  backdrop-filter: blur(2px);
+}
+
+.sdd-card {
+  background: white;
+  border-radius: 14px;
+  padding: 24px 22px 20px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+  border: 1px solid #e2e8f0;
+  animation: modalSlideIn 0.2s cubic-bezier(0.16,1,0.3,1);
+}
+
+.sdd-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.sdd-message {
+  font-size: 0.875rem;
+  color: #475569;
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+
+.sdd-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.sdd-date-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #1e293b;
+  font-size: 1rem;
+  box-sizing: border-box;
+  margin-bottom: 20px;
+  -webkit-appearance: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.sdd-date-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+  background: white;
+}
+
+.sdd-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.sdd-cancel-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sdd-cancel-btn:hover { background: #f1f5f9; }
+
+.sdd-confirm-btn {
+  flex: 2;
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  color: white;
+}
+
+.sdd-confirm-btn:hover { opacity: 0.85; }
+
+.sdd-btn-primary  { background: var(--primary-color); }
+.sdd-btn-danger   { background: #ef4444; }
+.sdd-btn-restore  { background: #22c55e; }
+</style>
