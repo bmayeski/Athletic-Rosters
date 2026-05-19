@@ -1,0 +1,205 @@
+<script>
+// ── Modal State ───────────────────────────────────────────────────────────────
+let targetLevel      = '';   // Tracks which level (Varsity, JV, etc.) the modal is targeting
+let selectedStudents = [];   // Temporary "cart" of students queued to be added
+
+// ── Modal Lifecycle ───────────────────────────────────────────────────────────
+
+/**
+ * Opens the Add Student modal for a given level and resets its state.
+ */
+function openAddStudentModal(level) {
+  targetLevel = level;
+
+  document.getElementById('modalTitle').innerText       = `Add Student to ${level}`;
+  document.getElementById('directorySearch').value      = '';
+  document.getElementById('searchResults').innerHTML    = '<p class="text-muted text-center p-3">Search the master directory to see results.</p>';
+  document.getElementById('selectedQueue').innerHTML    = '<p class="text-muted empty-queue-msg">No students selected yet.</p>';
+  document.getElementById('saveRosterBtn').disabled     = true;
+  selectedStudents = [];
+
+  // Reset date to today
+  const addDateInput = document.getElementById('addStudentDate');
+  if (addDateInput) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    addDateInput.value = todayStr;
+    addDateInput.max   = todayStr;
+  }
+
+  document.getElementById('addStudentModal').style.display = 'block';
+  setTimeout(() => document.getElementById('directorySearch').focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById('addStudentModal').style.display = 'none';
+}
+
+// ── Directory Search ──────────────────────────────────────────────────────────
+
+/** Triggers search on Enter key */
+function handleSearchKeyup(e) {
+  if (e.key === 'Enter') performDirectorySearch();
+}
+
+/**
+ * Filters the locally cached directory (zero server latency).
+ * Supports multi-term searching separated by spaces or commas.
+ */
+function performDirectorySearch() {
+  const input      = document.getElementById('directorySearch').value.toLowerCase();
+  const resultsDiv = document.getElementById('searchResults');
+
+  if (!window.DIRECTORY_DATA) {
+    resultsDiv.innerHTML = `
+      <div class="text-center p-4">
+        <div class="spinner-small" style="margin: 0 auto;"></div>
+        <p class="mt-2 text-muted">Syncing master directory... please wait.</p>
+      </div>`;
+    return;
+  }
+
+  const searchTerms = input.split(/[\s,]+/).filter(t => t.trim().length > 0);
+  if (searchTerms.length === 0) {
+    resultsDiv.innerHTML = '';
+    return;
+  }
+
+  const filtered = window.DIRECTORY_DATA.filter(row => {
+    const id    = String(row[0]).toLowerCase();
+    const last  = String(row[1]).toLowerCase();
+    const first = String(row[2]).toLowerCase();
+    return searchTerms.some(term => id.includes(term) || last.includes(term) || first.includes(term));
+  }).slice(0, 50);
+
+  displayDirectoryResults(filtered);
+}
+
+/**
+ * Renders search results into the modal results list.
+ * Includes a "Add All" button when multiple results are returned.
+ */
+function displayDirectoryResults(results) {
+  const resultsDiv = document.getElementById('searchResults');
+
+  if (!results || results.length === 0) {
+    resultsDiv.innerHTML = '<p class="text-center p-3">No students found.</p>';
+    return;
+  }
+
+  window.lastSearchResults = results;
+
+  let html = results.length > 1
+    ? `<button class="btn-secondary btn-sm mb-2" onclick="addAllToQueue()">+ Add All to List</button>`
+    : '';
+
+  results.forEach(student => {
+    const safeData = btoa(unescape(encodeURIComponent(JSON.stringify(student))));
+    html += `
+      <div class="result-item">
+        <div class="result-info">
+          <strong class="result-name">${student[1]}, ${student[2]}</strong>
+          <span class="result-id">ID: ${student[0]} | Grade: ${student[4]}</span>
+        </div>
+        <button class="btn-add-to-queue" onclick="addToQueue('${safeData}')">
+          <i class="fas fa-plus"></i>
+        </button>
+      </div>`;
+  });
+
+  resultsDiv.innerHTML = html;
+}
+
+// ── Queue Management ──────────────────────────────────────────────────────────
+
+function addToQueue(encodedData) {
+  const student = JSON.parse(decodeURIComponent(escape(atob(encodedData))));
+  if (selectedStudents.some(s => s[0] === student[0])) return;
+  selectedStudents.push(student);
+  renderQueue();
+}
+
+function addAllToQueue() {
+  if (!window.lastSearchResults) return;
+  window.lastSearchResults.forEach(student => {
+    if (!selectedStudents.some(s => s[0] === student[0])) {
+      selectedStudents.push(student);
+    }
+  });
+  renderQueue();
+  document.getElementById('searchResults').innerHTML =
+    '<p class="text-success text-center p-3">All students added to list!</p>';
+}
+
+function removeFromQueue(index) {
+  selectedStudents.splice(index, 1);
+  renderQueue();
+}
+
+function renderQueue() {
+  const queueDiv = document.getElementById('selectedQueue');
+  const saveBtn  = document.getElementById('saveRosterBtn');
+
+  if (selectedStudents.length === 0) {
+    queueDiv.innerHTML = '<p class="text-muted empty-queue-msg">No students selected yet.</p>';
+    saveBtn.disabled   = true;
+    return;
+  }
+
+  saveBtn.disabled = false;
+  queueDiv.innerHTML = selectedStudents.map((s, idx) => `
+    <div class="queue-item">
+      <span>${s[2]} ${s[1]} <small>(ID: ${s[0]})</small></span>
+      <button onclick="removeFromQueue(${idx})" style="border: none; background: none; color: red; cursor: pointer;">&times;</button>
+    </div>
+  `).join('');
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Sends the full queue to the server in one batch write,
+ * then clears the cache and refreshes the roster view.
+ * Works for both Secretary (table view) and Coach (card view).
+ */
+function saveBulkRoster() {
+  const isCoach = window.USER_ROLE === 'Coach';
+  const sport   = isCoach
+    ? window.COACH_SPORT
+    : document.getElementById('active-sport-title').innerText;
+
+  // Resolve the "date added" from the modal date input.
+  // The input is required — block save if it's empty.
+  const addDateInput = document.getElementById('addStudentDate');
+  if (!addDateInput || !addDateInput.value) {
+    addDateInput && addDateInput.focus();
+    addDateInput && addDateInput.classList.add('modal-date-input-error');
+    setTimeout(() => addDateInput && addDateInput.classList.remove('modal-date-input-error'), 2000);
+    return;
+  }
+  const [y, m, d] = addDateInput.value.split('-');
+  const actionDate = `${parseInt(m)}/${parseInt(d)}/${y}`;
+
+  document.getElementById('saveRosterBtn').innerHTML =
+    '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+  google.script.run
+    .withSuccessHandler(() => {
+      delete window.ROSTER_CACHE[sport];
+      selectedStudents = [];
+      closeModal();
+
+      if (isCoach) {
+        fetchAndRenderCoachRoster(sport);
+      } else {
+        const activeNav = document.querySelector('.nav-item.active');
+        handleSportClick(activeNav, null, sport);
+      }
+    })
+    .withFailureHandler(err => {
+      alert("Failed to save roster: " + err.message);
+      document.getElementById('saveRosterBtn').innerHTML = 'Save All to Roster';
+      document.getElementById('saveRosterBtn').disabled = false;
+    })
+    .addBulkStudentsToSport(window.GLOBAL_SCHOOL, sport, selectedStudents, targetLevel, actionDate, window.USER_EMAIL);
+}
+</script>
