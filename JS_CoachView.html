@@ -1,0 +1,688 @@
+<script>
+// ── Auth & PIN Logic ──────────────────────────────────────────────────────────
+
+const PIN_STORAGE_KEY       = 'coach_auth_'  + window.GLOBAL_SCHOOL;
+const ADMIN_STORAGE_KEY     = 'admin_auth_'  + window.GLOBAL_SCHOOL;
+const PIN_EXPIRY_DAYS       = 7;
+let   pendingRole           = null; // 'admin' or 'coach'
+
+// ── Session Helpers ───────────────────────────────────────────────────────────
+
+function getSavedCoachSession() {
+  try {
+    const raw = localStorage.getItem(PIN_STORAGE_KEY);
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    if (!session || !session.sport || !session.expiry) return null;
+    if (Date.now() > session.expiry) { localStorage.removeItem(PIN_STORAGE_KEY); return null; }
+    return session;
+  } catch (e) { return null; }
+}
+
+function saveCoachSession(name, sport, season, sports) {
+  const expiry = Date.now() + (PIN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify({ name, sport, season, sports, expiry }));
+}
+
+function getSavedAdminSession() {
+  try {
+    const raw = localStorage.getItem(ADMIN_STORAGE_KEY);
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    if (!session || !session.expiry) return null;
+    if (Date.now() > session.expiry) { localStorage.removeItem(ADMIN_STORAGE_KEY); return null; }
+    return session;
+  } catch (e) { return null; }
+}
+
+function saveAdminSession(name, role) {
+  const expiry = Date.now() + (PIN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify({ name, role, expiry }));
+}
+
+// ── Role Selector ─────────────────────────────────────────────────────────────
+
+function showRoleSelect() {
+  document.getElementById('role-select-card').style.display = 'block';
+  document.getElementById('pin-entry-card').style.display   = 'none';
+  document.getElementById('pin-input').value                = '';
+  document.getElementById('pin-error').innerText            = '';
+  pendingRole = null;
+}
+
+function showPinEntry(role) {
+  pendingRole = role;
+  document.getElementById('role-select-card').style.display = 'none';
+  document.getElementById('pin-entry-card').style.display   = 'block';
+  document.getElementById('pin-entry-title').innerText      =
+    role === 'admin' ? 'Admin PIN' : 'Coach PIN';
+  document.getElementById('pin-input').value  = '';
+  document.getElementById('pin-error').innerText = '';
+  setTimeout(() => document.getElementById('pin-input').focus(), 100);
+}
+
+// ── PIN Submission ────────────────────────────────────────────────────────────
+
+function submitPIN() {
+  const pin     = document.getElementById('pin-input').value.trim();
+  const errorEl = document.getElementById('pin-error');
+  const btn     = document.getElementById('pin-submit-btn');
+
+  errorEl.innerText = '';
+
+  if (pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+    errorEl.innerText = 'PIN must be exactly 4 digits.';
+    return;
+  }
+
+  btn.disabled  = true;
+  btn.innerText = 'Verifying...';
+
+  if (pendingRole === 'admin') {
+    google.script.run
+      .withSuccessHandler(result => {
+        btn.disabled  = false;
+        btn.innerText = 'Enter';
+        if (!result) {
+          errorEl.innerText = 'Incorrect PIN. Please try again.';
+          document.getElementById('pin-input').value = '';
+          document.getElementById('pin-input').focus();
+          return;
+        }
+        saveAdminSession(result.name, result.role);
+        window.ADMIN_NAME = result.name;
+        window.ADMIN_ROLE = result.role;
+        launchSecretaryView();
+      })
+      .withFailureHandler(err => {
+        btn.disabled  = false;
+        btn.innerText = 'Enter';
+        errorEl.innerText = 'Error verifying PIN. Please try again.';
+      })
+      .validateAdminPIN(window.GLOBAL_SCHOOL, pin);
+
+  } else {
+    google.script.run
+      .withSuccessHandler(result => {
+        btn.disabled  = false;
+        btn.innerText = 'Enter';
+        if (!result) {
+          errorEl.innerText = 'Incorrect PIN. Please try again.';
+          document.getElementById('pin-input').value = '';
+          document.getElementById('pin-input').focus();
+          return;
+        }
+        if (result.sports.length === 1) {
+          const sport  = result.sports[0];
+          const season = getSeasonForSport(sport);
+          saveCoachSession(result.name, sport, season, result.sports);
+          loadCoachView(result.name, sport, season);
+        } else {
+          showSportPicker(result.name, result.sports);
+        }
+      })
+      .withFailureHandler(err => {
+        btn.disabled  = false;
+        btn.innerText = 'Enter';
+        errorEl.innerText = 'Error verifying PIN. Please try again.';
+      })
+      .validateCoachPIN(window.GLOBAL_SCHOOL, pin);
+  }
+}
+
+function handlePinKeyup(e) {
+  if (e.key === 'Enter') submitPIN();
+}
+
+// ── Launch Secretary View ─────────────────────────────────────────────────────
+
+function launchSecretaryView() {
+  window.USER_ROLE = 'Secretary';
+
+  document.getElementById('pin-screen').style.display              = 'none';
+  document.getElementById('loading-screen').style.display          = 'none';
+  document.getElementById('secretary-view-wrapper').style.display  = 'block';
+  document.getElementById('coach-view-wrapper').style.display      = 'none';
+
+  // Auto-expand active seasons in sidebar
+  const seasons = window.CALENDAR_DATA.seasons;
+  Object.keys(seasons).forEach(seasonKey => {
+    if (isDateRangeActive(seasons[seasonKey].start, seasons[seasonKey].end)) {
+      const sports  = document.getElementById('sports-' + seasonKey);
+      const chevron = document.getElementById('chevron-' + seasonKey);
+      if (sports)  sports.classList.add('expanded');
+      if (chevron) chevron.classList.add('rotated');
+    }
+  });
+
+  showDashboard();
+}
+
+function adminLogout() {
+  localStorage.removeItem(ADMIN_STORAGE_KEY);
+  document.getElementById('secretary-view-wrapper').style.display = 'none';
+  document.getElementById('pin-screen').style.display             = 'flex';
+  showRoleSelect();
+}
+
+// ── Coach Logout ──────────────────────────────────────────────────────────────
+
+function coachLogout() {
+  const session = getSavedCoachSession();
+  if (session && session.sports && session.sports.length > 1) {
+    document.getElementById('coach-app').style.display  = 'none';
+    document.getElementById('pin-screen').style.display = 'flex';
+    showSportPicker(session.name, session.sports);
+  } else {
+    localStorage.removeItem(PIN_STORAGE_KEY);
+    document.getElementById('coach-app').style.display  = 'none';
+    document.getElementById('pin-screen').style.display = 'flex';
+    showRoleSelect();
+  }
+}
+function handlePinKeyup(e) {
+  if (e.key === 'Enter') submitPIN();
+}
+
+// ── Sport Picker ──────────────────────────────────────────────────────────────
+
+function showSportPicker(coachName, sports) {
+  const card = document.getElementById('pin-card');
+  card.innerHTML = `
+    <h2>Welcome, ${coachName.split(' ')[0]}!</h2>
+    <p style="color:#94a3b8; font-size:0.85rem; text-align:center; margin-bottom:20px;">
+      You coach multiple sports. Which would you like to view?
+    </p>
+    <div id="sport-picker-list"></div>`;
+
+  const list = document.getElementById('sport-picker-list');
+  sports.forEach(sport => {
+    const btn       = document.createElement('button');
+    btn.className   = 'pin-submit-btn';
+    btn.style.marginBottom = '10px';
+    btn.innerText   = sport;
+    btn.onclick     = () => {
+      const season = getSeasonForSport(sport);
+      saveCoachSession(coachName, sport, season, sports);
+      loadCoachView(coachName, sport, season);
+    };
+    list.appendChild(btn);
+  });
+}
+
+// ── Season / Period Helpers ───────────────────────────────────────────────────
+
+function getSeasonForSport(sport) {
+  const seasons = window.SEASON_DATA_CONFIG;
+  for (const seasonKey of Object.keys(seasons)) {
+    if (seasons[seasonKey].sports.includes(sport)) return seasonKey;
+  }
+  return null;
+}
+
+function getPeriodsForSeason(season) {
+  if (!season) return window.CALENDAR_DATA.gradingPeriods;
+  const keys = window.CALENDAR_DATA.seasonPeriods[season] || [];
+  return keys.map(key => window.CALENDAR_DATA.gradingPeriods.find(p => p.key === key)).filter(Boolean);
+}
+
+function getDefaultPeriodForSeason(season) {
+  const periods = getPeriodsForSeason(season);
+  const today   = new Date();
+  today.setHours(0, 0, 0, 0);
+  const oneWeek = 7 * 24 * 60 * 60 * 1000;
+
+  for (const p of periods) {
+    const start = parseLocalDate(p.start);
+    const diff  = start - today;
+    if (diff > 0 && diff <= oneWeek) return p;
+  }
+  for (const p of periods) {
+    if (today >= parseLocalDate(p.start) && today <= parseLocalDate(p.end)) return p;
+  }
+  return periods[0] || null;
+}
+
+// ── Coach View Loader ─────────────────────────────────────────────────────────
+
+function loadCoachView(coachName, sport, season) {
+  window.COACH_SPORT  = sport;
+  window.COACH_SEASON = season;
+  window.COACH_NAME   = coachName; // stored for history logging
+
+  document.getElementById('pin-screen').style.display = 'none';
+  document.getElementById('coach-app').style.display  = 'block';
+
+  document.getElementById('coach-header-name').innerText  = coachName
+    ? `Coach ${coachName.split(' ')[1] || coachName}` : 'Coach';
+  document.getElementById('coach-header-sport').innerText = sport;
+
+  buildPeriodSwitcher(season);
+
+  const defaultPeriod = getDefaultPeriodForSeason(season);
+  window.COACH_ACTIVE_PERIOD = defaultPeriod ? defaultPeriod.key : null;
+  setActivePeriodPill(window.COACH_ACTIVE_PERIOD);
+
+  fetchAndRenderCoachRoster(sport);
+}
+
+// ── Period Pill Switcher ──────────────────────────────────────────────────────
+
+function buildPeriodSwitcher(season) {
+  const periods   = getPeriodsForSeason(season);
+  const container = document.getElementById('coach-period-switcher');
+  container.innerHTML = '';
+  periods.forEach(period => {
+    const pill           = document.createElement('button');
+    pill.className       = 'period-pill';
+    pill.id              = 'pill-' + period.key;
+    pill.dataset.key     = period.key;
+    pill.innerText       = period.label;
+    pill.onclick         = () => switchCoachPeriod(period.key);
+    container.appendChild(pill);
+  });
+}
+
+function setActivePeriodPill(periodKey) {
+  document.querySelectorAll('.period-pill').forEach(pill => {
+    pill.classList.toggle('period-pill-active', pill.dataset.key === periodKey);
+  });
+}
+
+function switchCoachPeriod(periodKey) {
+  window.COACH_ACTIVE_PERIOD = periodKey;
+  setActivePeriodPill(periodKey);
+  const data = window.ROSTER_CACHE[window.COACH_SPORT];
+  if (data) renderCoachCards(data);
+}
+
+// ── Roster Fetch & Render ─────────────────────────────────────────────────────
+
+function fetchAndRenderCoachRoster(sport) {
+  document.getElementById('coach-roster-container').innerHTML = `
+    <div style="text-align:center; padding: 40px 16px; color: #64748b;">
+      <div class="spinner" style="margin: 0 auto 16px;"></div>
+      <p>Loading ${sport} roster...</p>
+    </div>`;
+
+  if (window.ROSTER_CACHE[sport]) {
+    renderCoachCards(window.ROSTER_CACHE[sport]);
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(data => {
+      window.ROSTER_CACHE[sport] = data;
+      renderCoachCards(data);
+    })
+    .withFailureHandler(err => {
+      document.getElementById('coach-roster-container').innerHTML = `
+        <div class="coach-no-period">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          Error loading roster: ${err.message}
+        </div>`;
+    })
+    .getMergedSportData(window.GLOBAL_SCHOOL, sport);
+}
+
+// ── Card Rendering ────────────────────────────────────────────────────────────
+
+const COACH_PERIOD_COL_MAP = {
+  S2_FINALS: { gpa: 19, conduct: 20, passing: 21, classes: 22, qualify: 23, waiver: 24, status: 25 },
+  S1_6WK:    { gpa: 5,  conduct: 6,  passing: 7,  classes: 8,  qualify: 9,  waiver: 10, status: 11 },
+  S1_12WK:   { gpa: 5,  conduct: 6,  passing: 7,  classes: 8,  qualify: 9,  waiver: 10, status: 11 },
+  S1_FINALS: { gpa: 5,  conduct: 6,  passing: 7,  classes: 8,  qualify: 9,  waiver: 10, status: 11 },
+  S2_6WK:    { gpa: 12, conduct: 13, passing: 14, classes: 15, qualify: 16, waiver: 17, status: 18 },
+  S2_12WK:   { gpa: 19, conduct: 20, passing: 21, classes: 22, qualify: 23, waiver: 24, status: 25 }
+};
+
+// Date column indices (0-based, matching Code.gs constants)
+const COL_DATE_ADDED   = 27;
+const COL_DATE_MOVED   = 28;
+const COL_DATE_DROPPED = 29;
+
+function renderCoachCards(dataArr) {
+  const container = document.getElementById('coach-roster-container');
+  container.innerHTML = '';
+
+  const periodKey = window.COACH_ACTIVE_PERIOD;
+  const colMap    = periodKey ? COACH_PERIOD_COL_MAP[periodKey] : null;
+  const levels    = ['Varsity', 'Junior Varsity', 'Freshman', 'Dropped'];
+
+  levels.forEach(level => {
+    const rows    = dataArr ? dataArr.filter(r => String(r[1]).trim() === level) : [];
+    const section = document.createElement('div');
+    section.className = 'coach-level-section';
+
+    const header = document.createElement('div');
+    header.className = 'coach-level-header';
+
+    const left = document.createElement('div');
+    left.style.cssText = 'display:flex; align-items:center; gap:8px;';
+
+    const levelTitle = document.createElement('span');
+    levelTitle.className   = 'coach-level-title';
+    levelTitle.style.color = level === 'Dropped' ? '#ef4444' : 'var(--primary-color)';
+    levelTitle.innerText   = level;
+
+    const countBadge = document.createElement('span');
+    countBadge.className = 'coach-level-count';
+    countBadge.innerText = rows.length;
+
+    left.appendChild(levelTitle);
+    left.appendChild(countBadge);
+    header.appendChild(left);
+
+    if (level !== 'Dropped') {
+      const addBtn     = document.createElement('button');
+      addBtn.className = 'coach-add-btn';
+      addBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Add';
+      addBtn.onclick   = () => openAddStudentModal(level);
+      header.appendChild(addBtn);
+    }
+
+    section.appendChild(header);
+
+    if (rows.length === 0) {
+      const empty       = document.createElement('div');
+      empty.className   = 'coach-empty';
+      empty.innerText   = `No students currently in ${level}.`;
+      section.appendChild(empty);
+    } else {
+      rows.forEach(row => section.appendChild(buildStudentCard(row, level, colMap)));
+    }
+
+    container.appendChild(section);
+  });
+}
+
+function buildStudentCard(row, level, colMap) {
+  const id        = String(row[0]).trim();
+  const lastName  = row[2] || '';
+  const firstName = row[3] || '';
+  const grade     = row[4] || '';
+  const safeName  = `${firstName} ${lastName}`.replace(/'/g, "\\'");
+
+  // Date tracking columns
+  const dateAdded   = row[COL_DATE_ADDED]   || '';
+  const dateMoved   = row[COL_DATE_MOVED]   || '';
+  const dateDropped = row[COL_DATE_DROPPED] || '';
+
+  const isDropped = level === 'Dropped';
+  const canRaise  = level === 'Junior Varsity' || level === 'Freshman';
+  const canLower  = level === 'Varsity'        || level === 'Junior Varsity';
+
+  // ── Eligibility ──
+  let badgeHtml   = '';
+  let metricsHtml = '';
+  let badgeClass  = 'status-none';
+  let qualify     = false;
+
+  if (colMap) {
+    const gpa     = row[colMap.gpa];
+    const conduct = row[colMap.conduct];
+    const passing = row[colMap.passing];
+    const classes = row[colMap.classes];
+    const waiver  = String(row[colMap.waiver]  || '').toUpperCase() === 'TRUE';
+    qualify       = String(row[colMap.qualify] || '').toUpperCase() === 'TRUE';
+    const status  = String(row[colMap.status]  || '').toUpperCase();
+    const hasData = (gpa !== '' && gpa !== null && gpa !== undefined);
+
+    let badgeText = 'PENDING';
+    if (waiver)               { badgeClass = 'status-blue';  badgeText = 'WAIVER';     }
+    else if (hasData) {
+      if (status === 'ELIGIBLE') { badgeClass = 'status-green'; badgeText = 'ELIGIBLE';   }
+      else                       { badgeClass = 'status-red';   badgeText = 'INELIGIBLE'; }
+    }
+
+    badgeHtml = `<span class="coach-eligibility-badge ${badgeClass}">${badgeText}</span>`;
+
+    const gpaColor     = hasData && gpa < 2     ? '#f87171' : '#4ade80';
+    const conductColor = hasData && conduct >= 2 ? '#f87171' : '#4ade80';
+    const passingColor = hasData && passing < 4  ? '#f87171' : '#4ade80';
+    const classesColor = hasData && classes < 4  ? '#f87171' : '#4ade80';
+    const gpaVal       = hasData ? parseFloat(gpa).toFixed(2) : '-';
+
+    metricsHtml = `
+      <div class="coach-metrics">
+        <div class="coach-metric-cell">
+          <span class="coach-metric-label">GPA</span>
+          <span class="coach-metric-value" style="color:${gpaColor}">${gpaVal}</span>
+        </div>
+        <div class="coach-metric-cell">
+          <span class="coach-metric-label">Conduct</span>
+          <span class="coach-metric-value" style="color:${conductColor}">${hasData ? conduct : '-'}</span>
+        </div>
+        <div class="coach-metric-cell">
+          <span class="coach-metric-label">Passing</span>
+          <span class="coach-metric-value" style="color:${passingColor}">${hasData ? passing : '-'}</span>
+        </div>
+        <div class="coach-metric-cell">
+          <span class="coach-metric-label">Classes</span>
+          <span class="coach-metric-value" style="color:${classesColor}">${hasData ? classes : '-'}</span>
+        </div>
+      </div>`;
+  }
+
+  // ── Qualify line (ineligible only) ──
+  const isIneligible  = badgeClass === 'status-red';
+  const qualifyFooter = isIneligible && colMap
+    ? `<div class="coach-card-qualify-line ${qualify ? 'qualify-yes' : 'qualify-no'}">
+         <i class="fa-solid ${qualify ? 'fa-circle-check' : 'fa-circle-xmark'}" style="flex-shrink:0;"></i>
+         <span>${qualify ? 'Qualifies for waiver' : 'Does not qualify for waiver'}</span>
+       </div>`
+    : '';
+
+  // ── Date footer ──
+  let dateParts = [];
+  if (dateAdded)   dateParts.push(`Added: ${dateAdded}`);
+  if (dateMoved)   dateParts.push(`Moved: ${dateMoved}`);
+  if (dateDropped) dateParts.push(`Dropped: ${dateDropped}`);
+  const dateFooter = dateParts.length > 0
+    ? `<div class="coach-card-date-footer">${dateParts.join(' · ')}</div>`
+    : '';
+
+  // ── Action buttons ──
+  let actionsHtml = '';
+  if (isDropped) {
+    actionsHtml = `
+      <button class="coach-action-btn coach-btn-restore"
+              onclick="coachRestore('${id}', '${safeName}')">
+        <i class="fa-solid fa-rotate-left"></i> Restore
+      </button>`;
+  } else {
+    actionsHtml = `
+      <button class="coach-action-btn coach-btn-up"
+              ${canRaise ? `onclick="coachMove('${id}','${level}','UP')"` : 'disabled'}>
+        <i class="fa-solid fa-arrow-up"></i>
+      </button>
+      <button class="coach-action-btn coach-btn-down"
+              ${canLower ? `onclick="coachMove('${id}','${level}','DOWN')"` : 'disabled'}>
+        <i class="fa-solid fa-arrow-down"></i>
+      </button>
+      <button class="coach-action-btn coach-btn-drop"
+              onclick="coachDrop('${id}','${safeName}','${level}')">
+        <i class="fa-solid fa-user-xmark"></i> Drop
+      </button>`;
+  }
+
+  const borderColor = badgeClass === 'status-green' ? '#10b981'
+                    : badgeClass === 'status-red'   ? '#ef4444'
+                    : badgeClass === 'status-blue'  ? '#3b82f6'
+                    : '#334155';
+
+  const card = document.createElement('div');
+  card.className         = 'coach-card';
+  card.style.borderColor = borderColor;
+  card.dataset.name      = `${lastName} ${firstName}`.toLowerCase();
+  card.innerHTML = `
+    <div class="coach-card-top">
+      <div>
+        <div class="coach-card-name">${lastName}, ${firstName}</div>
+        <div class="coach-card-meta">ID: ${id} · Grade ${grade} · ${level}</div>
+      </div>
+      ${badgeHtml}
+    </div>
+    ${metricsHtml}
+    <div class="coach-card-bottom">
+      <div class="coach-card-qualify-line">${qualifyFooter}</div>
+      <div class="coach-card-actions">${actionsHtml}</div>
+    </div>
+    ${dateFooter}`;
+
+  return card;
+}
+
+// ── Date Confirmation Overlay ─────────────────────────────────────────────────
+
+/**
+ * Shows the date confirmation overlay for any coach action.
+ * onConfirm(dateString) is called when the coach taps Confirm.
+ *
+ * @param {object} opts
+ *   title      - e.g. "Drop Player"
+ *   message    - e.g. "When did you decide to drop Smith, John?"
+ *   confirmLabel - text for confirm button, e.g. "Drop Player"
+ *   confirmClass - extra CSS class for button color, e.g. "overlay-btn-danger"
+ *   onConfirm  - callback(dateString)
+ */
+function showDateOverlay(opts) {
+  const today    = new Date();
+  const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD for input[type=date]
+
+  const overlay = document.getElementById('coach-date-overlay');
+  overlay.querySelector('.cdo-title').innerText   = opts.title;
+  overlay.querySelector('.cdo-message').innerText = opts.message;
+
+  const dateInput = overlay.querySelector('.cdo-date-input');
+  dateInput.value = todayStr;
+  dateInput.max   = todayStr; // can't pick a future date
+
+  const confirmBtn = overlay.querySelector('.cdo-confirm-btn');
+  confirmBtn.innerText   = opts.confirmLabel;
+  confirmBtn.className   = 'cdo-confirm-btn ' + (opts.confirmClass || '');
+
+  // Wire up buttons
+  confirmBtn.onclick = () => {
+    const val = dateInput.value;
+    if (!val) return;
+    // Convert YYYY-MM-DD to M/D/YYYY for consistency with existing date formats
+    const [y, m, d] = val.split('-');
+    const formatted = `${parseInt(m)}/${parseInt(d)}/${y}`;
+    hideDateOverlay();
+    opts.onConfirm(formatted);
+  };
+
+  overlay.querySelector('.cdo-cancel-btn').onclick = hideDateOverlay;
+  overlay.style.display = 'flex';
+  dateInput.focus();
+}
+
+function hideDateOverlay() {
+  document.getElementById('coach-date-overlay').style.display = 'none';
+}
+
+// ── Coach Action Handlers ─────────────────────────────────────────────────────
+
+function coachSendUpdate(payload) {
+  const overlay = document.getElementById('coach-update-overlay');
+  if (overlay) overlay.style.display = 'flex';
+
+  google.script.run
+    .withSuccessHandler(updatedData => {
+      if (overlay) overlay.style.display = 'none';
+      window.ROSTER_CACHE[payload.sport] = updatedData;
+      renderCoachCards(updatedData);
+    })
+    .withFailureHandler(err => {
+      if (overlay) overlay.style.display = 'none';
+      alert('Update failed: ' + err.message);
+    })
+    .updateStudentData(payload);
+}
+
+function coachMove(id, currentLevel, direction) {
+  const hierarchy    = ['Freshman', 'Junior Varsity', 'Varsity'];
+  const currentIndex = hierarchy.indexOf(currentLevel.trim());
+  const newIndex     = direction === 'UP' ? currentIndex + 1 : currentIndex - 1;
+  if (newIndex < 0 || newIndex >= hierarchy.length) return;
+
+  const newLevel = hierarchy[newIndex];
+  const label    = direction === 'UP' ? 'Move Up' : 'Move Down';
+
+  showDateOverlay({
+    title:        label,
+    message:      `When did this player move from ${currentLevel} to ${newLevel}?`,
+    confirmLabel: label,
+    confirmClass: 'overlay-btn-primary',
+    onConfirm: actionDate => coachSendUpdate({
+      school:     window.GLOBAL_SCHOOL,
+      sport:      window.COACH_SPORT,
+      id,
+      colIndex:   1,
+      value:      newLevel,
+      action:     'MOVE',
+      actionDate,
+      loggedBy:   window.COACH_NAME || ''
+    })
+  });
+}
+
+function coachDrop(id, name, currentLevel) {
+  showDateOverlay({
+    title:        'Drop Player',
+    message:      `When was the decision made to drop ${name} from the program?`,
+    confirmLabel: 'Drop Player',
+    confirmClass: 'overlay-btn-danger',
+    onConfirm: actionDate => coachSendUpdate({
+      school:     window.GLOBAL_SCHOOL,
+      sport:      window.COACH_SPORT,
+      id,
+      colIndex:   1,
+      value:      'Dropped',
+      action:     'DROP',
+      actionDate,
+      loggedBy:   window.COACH_NAME || ''
+    })
+  });
+}
+
+function coachRestore(id, name) {
+  const choice   = prompt(`Restore ${name} to which level?\n\n1: Varsity\n2: Junior Varsity\n3: Freshman`, '1');
+  const levelMap = { '1': 'Varsity', '2': 'Junior Varsity', '3': 'Freshman' };
+  const newLevel = levelMap[choice];
+  if (!newLevel) return;
+
+  showDateOverlay({
+    title:        'Restore Player',
+    message:      `When was ${name} restored to the program?`,
+    confirmLabel: 'Restore',
+    confirmClass: 'overlay-btn-restore',
+    onConfirm: actionDate => coachSendUpdate({
+      school:     window.GLOBAL_SCHOOL,
+      sport:      window.COACH_SPORT,
+      id,
+      colIndex:   1,
+      value:      newLevel,
+      action:     'RESTORE',
+      actionDate,
+      loggedBy:   window.COACH_NAME || ''
+    })
+  });
+}
+
+function coachFilterRoster() {
+  const filter = document.getElementById('coach-search').value.toLowerCase();
+  document.querySelectorAll('.coach-card').forEach(card => {
+    card.style.display = card.dataset.name.includes(filter) ? '' : 'none';
+  });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+(function initCoachView() {
+  if (window.USER_ROLE !== 'Coach') return;
+  const session = getSavedCoachSession();
+  if (session) loadCoachView(session.name, session.sport, session.season);
+})();
+</script>
