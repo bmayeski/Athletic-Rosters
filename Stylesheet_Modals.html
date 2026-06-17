@@ -140,8 +140,9 @@
 /* ── Modal Footer Date Input ─────────────────────────────────────────────── */
 
 .modal-footer {
-  flex-direction: column;
-  align-items: stretch;
+  flex-direction: row;
+  justify-content: space-between; /* Date on the left, Buttons on the right */
+  align-items: center;
   gap: 10px;
 }
 
@@ -149,8 +150,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 0 4px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 0;          /* Removed top/bottom padding */
+  border-bottom: none; /* Removed the dividing line for desktop */
 }
 
 .modal-date-label {
@@ -200,6 +201,29 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+@media (max-width: 600px) {
+  .modal-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .modal-footer-date {
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e2e8f0; /* Bring back the dividing line for mobile */
+  }
+
+  .modal-footer-actions {
+    width: 100%;
+    display: flex;
+    gap: 10px;
+  }
+  
+  /* Make the buttons fill the width on mobile for easier tapping */
+  .modal-footer-actions button {
+    flex: 1; 
+  }
 }
 
 /* ── Secretary Date Dialog ───────────────────────────────────────────────── */
