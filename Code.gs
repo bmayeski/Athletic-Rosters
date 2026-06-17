@@ -10,85 +10,42 @@ const SCHOOL_INFO = {
   'West Hills':      { logoUrl: 'https://wolfpack.guhsd.net/images/logo.png',    primaryColor: '#1f52c2', sheetID: '1E4w20cV3plZjgHS39CUNnLmTMRVqgxY2JfdJnrXByGc', abbreviatedName: 'WHHS'  }
 };
 
-/**
- * Master list of all known sports grouped by season.
- * Used as the dropdown source when adding a sport from the dashboard.
- * The actual active sports per school are stored in the Sports tab.
- */
 const SEASON_DATA = {
   "FALL":   { icon: "fa-leaf",      sports: ["Cheer", "Cross Country", "Flag Football", "Football", "Golf - Girls", "Tennis - Girls", "Volleyball - Girls", "Water Polo - Boys"] },
   "WINTER": { icon: "fa-snowflake", sports: ["Basketball - Boys", "Basketball - Girls", "Competition Cheer", "Soccer - Boys", "Soccer - Girls", "Water Polo - Girls", "Wrestling - Boys", "Wrestling - Girls"] },
   "SPRING": { icon: "fa-droplet",   sports: ["Baseball", "Golf - Boys", "Lacrosse - Boys", "Lacrosse - Girls", "Softball", "Swim & Dive", "Tennis - Boys", "Track & Field", "Volleyball - Boys"] }
 };
 
-const CALENDAR_DATA = {
-  seasons: {
-    FALL:   { start: '2025-07-23', end: '2025-11-13' },
-    WINTER: { start: '2025-10-27', end: '2026-02-11' },
-    SPRING: { start: '2026-01-15', end: '2026-05-12' }
-  },
-  gradingPeriods: [
-    { key: 'S1_6WK',    label: 'S1 - 6 Week',  start: '2025-09-27', end: '2025-11-07' },
-    { key: 'S1_12WK',   label: 'S1 - 12 Week', start: '2025-11-08', end: '2026-01-09' },
-    { key: 'S1_FINALS', label: 'S1 - Finals',  start: '2026-01-10', end: '2026-02-20' },
-    { key: 'S2_6WK',    label: 'S2 - 6 Week',  start: '2026-02-21', end: '2026-04-24' },
-    { key: 'S2_12WK',   label: 'S2 - 12 Week', start: '2026-04-25', end: '2026-06-18' },
-    { key: 'S2_FINALS', label: 'S2 - Finals',  start: '2026-06-20', end: '2026-09-26' }
-  ],
-  seasonPeriods: {
-    FALL:   ['S2_FINALS', 'S1_6WK',    'S1_12WK'  ],
-    WINTER: ['S1_12WK',   'S1_FINALS', 'S2_6WK'   ],
-    SPRING: ['S1_FINALS', 'S2_6WK',    'S2_12WK'  ]
-  }
-};
+const MASTER_DIRECTORY_ID = '1oV4hTFizvmNz6r5JkVx8ko1wbG86pXCglaLtswuW5HM';
 
-const MASTER_DIRECTORY_ID = '1taQtmJlyyj8IVlKxL8gNngw8lKrRNvnHsXVvox3DBjQ';
-
-const SECRETARY_EMAILS = [
-  'secretary1@guhsd.net',
-  'secretary2@guhsd.net'
-];
-
-// ─── Sport Sheet Header Row ───────────────────────────────────────────────────
+// UPDATED: Now perfectly matches the "Skinny Roster" format
 const SPORT_SHEET_HEADERS = [
-  ['School Year', 'Student ID', 'Level', 'Last Name', 'First Name', 'Grade',
-   'S1F GPA', 'S1F Conduct', 'S1F Passing', 'S1F Classes', 'S1F Qualify', 'S1F Waiver', 'S1F Status',
-   'S26W GPA', 'S26W Conduct', 'S26W Passing', 'S26W Classes', 'S26W Qualify', 'S26W Waiver', 'S26W Status',
-   'S212W GPA', 'S212W Conduct', 'S212W Passing', 'S212W Classes', 'S212W Qualify', 'S212W Waiver', 'S212W Status',
-   'Overall Waiver Used',
-   'Date Added', 'Date Last Moved', 'Date Dropped']  // cols 28, 29, 30 (index 27, 28, 29)
+  ['Student Name', 'Student ID', 'Level', 'Date Added', 'Date Moved', 'Date Dropped'] 
 ];
 
-// Column indices (0-based) for the date tracking columns
-const COL_DATE_ADDED    = 27;
-const COL_DATE_MOVED    = 28;
-const COL_DATE_DROPPED  = 29;
+// UPDATED: Column mappings for the new Skinny Roster (0-indexed)
+const COL_DATE_ADDED   = 3; // Col D
+const COL_DATE_MOVED   = 4; // Col E
+const COL_DATE_DROPPED = 5; // Col F
 
-// History tab headers
 const HISTORY_HEADERS = [
   ['Timestamp', 'Student ID', 'Student Name', 'Sport', 'Action', 'From Level', 'To Level', 'Action Date', 'Logged By']
 ];
-
-// ─── Entry Point ──────────────────────────────────────────────────────────────
 
 function doGet(e) {
   const selectedSchool = (e && e.parameter && e.parameter.school) || "Valhalla";
   const schoolConfig   = SCHOOL_INFO[selectedSchool] || SCHOOL_INFO['Valhalla'];
   const template       = HtmlService.createTemplateFromFile('Index');
-
-  const userEmail       = (Session.getEffectiveUser().getEmail() || Session.getActiveUser().getEmail()).toLowerCase();
-
-  // Role is always 'Pending' — determined client-side via PIN auth.
-  // This ensures non-Google users can still authenticate.
+  
+  const userEmail = (Session.getEffectiveUser().getEmail() || Session.getActiveUser().getEmail()).toLowerCase();
   const userRole = 'Pending';
 
-  // Load active sports from spreadsheet for sidebar
   const activeSports = getSportsForSchool(selectedSchool);
 
   template.currentSchool  = selectedSchool;
   template.activeSports   = activeSports;
   template.seasonData     = SEASON_DATA;
-  template.calendarData   = CALENDAR_DATA;
+  template.calendarData   = getDynamicCalendar();
   template.userRole       = userRole;
   template.userEmail      = userEmail;
   template.config = {
@@ -108,13 +65,6 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-// ─── Sports Tab Helpers ───────────────────────────────────────────────────────
-
-/**
- * Reads the Sports tab and returns active sports grouped by season.
- * Format: { FALL: ['Football', 'Cheer', ...], WINTER: [...], SPRING: [...] }
- * Falls back to SEASON_DATA if Sports tab doesn't exist yet.
- */
 function getSportsForSchool(schoolName) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) return buildFallbackSports();
@@ -123,7 +73,7 @@ function getSportsForSchool(schoolName) {
   const sheet = ss.getSheetByName('Sports');
   if (!sheet) return buildFallbackSports();
 
-  const data   = sheet.getDataRange().getValues().slice(1); // skip header
+  const data   = sheet.getDataRange().getValues().slice(1); 
   const result = { FALL: [], WINTER: [], SPRING: [] };
 
   data.forEach(row => {
@@ -135,13 +85,10 @@ function getSportsForSchool(schoolName) {
     }
   });
 
-  // Sort each season's sports alphabetically
   Object.keys(result).forEach(season => result[season].sort());
-
   return result;
 }
 
-/** Falls back to SEASON_DATA if the Sports tab doesn't exist yet. */
 function buildFallbackSports() {
   const result = {};
   Object.keys(SEASON_DATA).forEach(season => {
@@ -150,19 +97,12 @@ function buildFallbackSports() {
   return result;
 }
 
-// ─── Dashboard Data ───────────────────────────────────────────────────────────
-
-/**
- * Returns all data needed to render the dashboard:
- * sports (all rows from Sports tab) and coaches (all rows from Coaches tab).
- */
 function getDashboardData(schoolName) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) throw new Error('School not found.');
 
   const ss = SpreadsheetApp.openById(config.sheetID);
 
-  // Sports tab: Season | Sport Name | Active
   const sportsSheet = ss.getSheetByName('Sports');
   const sports = sportsSheet
     ? sportsSheet.getDataRange().getValues().slice(1)
@@ -171,44 +111,32 @@ function getDashboardData(schoolName) {
         .sort((a, b) => a.name.localeCompare(b.name))
     : [];
 
-  // Coaches tab: Name | PIN | Sports
   const coachesSheet = ss.getSheetByName('Coaches');
   const coaches = coachesSheet
     ? coachesSheet.getDataRange().getValues().slice(1)
         .filter(r => String(r[0]).trim())
-        .map(r => ({ name: String(r[0]).trim(), pin: String(r[1]).trim(), sports: String(r[2]).trim() }))
+        .map(r => ({ name: String(r[0]).trim(), email: String(r[1]).trim(), sports: String(r[2]).trim(), type: String(r[3] || 'Head').trim() }))
     : [];
 
   return { sports, coaches };
 }
 
-// ─── Sport Management ─────────────────────────────────────────────────────────
-
-/**
- * Adds a sport to the Sports tab and creates its sheet with standard headers.
- * @returns {{ success: boolean, message: string }}
- */
 function addSport(schoolName, season, sportName) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) throw new Error('School not found.');
 
   const ss = SpreadsheetApp.openById(config.sheetID);
-
-  // Ensure Sports tab exists
   let sportsTab = ss.getSheetByName('Sports');
   if (!sportsTab) {
     sportsTab = ss.insertSheet('Sports');
     sportsTab.appendRow(['Season', 'Sport Name', 'Active']);
   }
 
-  // Check for duplicate
   const existing = sportsTab.getDataRange().getValues();
   for (let i = 1; i < existing.length; i++) {
     if (String(existing[i][1]).trim().toLowerCase() === sportName.trim().toLowerCase()) {
-      // If archived, re-activate it
       if (String(existing[i][2]).trim().toUpperCase() === 'N') {
         sportsTab.getRange(i + 1, 3).setValue('Y');
-        // Rename archived sheet back if it exists
         const archivedSheet = ss.getSheetByName('ARCHIVED - ' + sportName);
         if (archivedSheet) archivedSheet.setName(sportName);
         return { success: true, message: sportName + ' has been re-activated.' };
@@ -217,27 +145,19 @@ function addSport(schoolName, season, sportName) {
     }
   }
 
-  // Add to Sports tab
   sportsTab.appendRow([season.toUpperCase(), sportName, 'Y']);
-
-  // Create sport sheet if it doesn't exist
   if (!ss.getSheetByName(sportName)) {
     const newSheet = ss.insertSheet(sportName);
     newSheet.getRange(1, 1, 1, SPORT_SHEET_HEADERS[0].length).setValues(SPORT_SHEET_HEADERS);
     newSheet.appendRow(new Array(SPORT_SHEET_HEADERS[0].length).fill(''));
 
-    // Move to position 6 (index 5), or last if fewer than 6 sheets exist
     const targetIndex = Math.min(5, ss.getNumSheets() - 1);
-    ss.moveActiveSheet(targetIndex + 1); // moveActiveSheet is 1-based
+    ss.moveActiveSheet(targetIndex + 1); 
   }
 
   return { success: true, message: sportName + ' has been added successfully.' };
 }
 
-/**
- * Archives a sport: sets Active to N in Sports tab and renames the sheet.
- * @returns {{ success: boolean, message: string }}
- */
 function archiveSport(schoolName, sportName) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) throw new Error('School not found.');
@@ -246,7 +166,6 @@ function archiveSport(schoolName, sportName) {
   const sportsTab  = ss.getSheetByName('Sports');
   if (!sportsTab) throw new Error('Sports tab not found.');
 
-  // Set Active to N
   const data = sportsTab.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][1]).trim().toLowerCase() === sportName.trim().toLowerCase()) {
@@ -255,20 +174,13 @@ function archiveSport(schoolName, sportName) {
     }
   }
 
-  // Rename sport sheet to ARCHIVED - Sport Name
   const sportSheet = ss.getSheetByName(sportName);
   if (sportSheet) sportSheet.setName('ARCHIVED - ' + sportName);
 
   return { success: true, message: sportName + ' has been archived.' };
 }
 
-// ─── Coach Management ─────────────────────────────────────────────────────────
-
-/**
- * Adds a new coach row to the Coaches tab.
- * Enforces PIN uniqueness across all coaches.
- */
-function addCoach(schoolName, name, pin, sports) {
+function addCoach(schoolName, name, email, sports, type) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) throw new Error('School not found.');
 
@@ -276,25 +188,21 @@ function addCoach(schoolName, name, pin, sports) {
   let coachesTab = ss.getSheetByName('Coaches');
   if (!coachesTab) {
     coachesTab = ss.insertSheet('Coaches');
-    coachesTab.appendRow(['Name', 'PIN', 'Sports']);
+    coachesTab.appendRow(['Name', 'Email', 'Sports', 'Type']);
   }
 
-  // Check PIN uniqueness
   const data = coachesTab.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][1]).trim() === String(pin).trim()) {
-      return { success: false, message: 'PIN ' + pin + ' is already in use by ' + data[i][0] + '.' };
+    if (String(data[i][1]).trim().toLowerCase() === String(email).trim().toLowerCase()) {
+      return { success: false, message: 'Email ' + email + ' is already in use by ' + data[i][0] + '.' };
     }
   }
 
-  coachesTab.appendRow([name, pin, sports]);
+  coachesTab.appendRow([name, email, sports, type || 'Head']);
   return { success: true, message: name + ' has been added.' };
 }
 
-/**
- * Removes a coach by their PIN.
- */
-function removeCoach(schoolName, pin) {
+function removeCoach(schoolName, email) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) throw new Error('School not found.');
 
@@ -304,19 +212,15 @@ function removeCoach(schoolName, pin) {
 
   const data = coachesTab.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][1]).trim() === String(pin).trim()) {
+    if (String(data[i][1]).trim().toLowerCase() === String(email).trim().toLowerCase()) {
       coachesTab.deleteRow(i + 1);
       return { success: true, message: data[i][0] + ' has been removed.' };
     }
   }
-  return { success: false, message: 'Coach with PIN ' + pin + ' not found.' };
+  return { success: false, message: 'Coach with email ' + email + ' not found.' };
 }
 
-/**
- * Updates an existing coach row. Identified by their current PIN.
- * If newPin differs from currentPin, checks uniqueness first.
- */
-function updateCoach(schoolName, currentPin, name, newPin, sports) {
+function updateCoach(schoolName, currentEmail, name, newEmail, sports, type) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) throw new Error('School not found.');
 
@@ -325,31 +229,25 @@ function updateCoach(schoolName, currentPin, name, newPin, sports) {
   if (!coachesTab) throw new Error('Coaches tab not found.');
 
   const data = coachesTab.getDataRange().getValues();
-
-  // If PIN is changing, check it's not already taken
-  if (String(newPin).trim() !== String(currentPin).trim()) {
+  
+  if (String(newEmail).trim().toLowerCase() !== String(currentEmail).trim().toLowerCase()) {
     for (let i = 1; i < data.length; i++) {
-      if (String(data[i][1]).trim() === String(newPin).trim()) {
-        return { success: false, message: 'PIN ' + newPin + ' is already in use by ' + data[i][0] + '.' };
+      if (String(data[i][1]).trim().toLowerCase() === String(newEmail).trim().toLowerCase()) {
+        return { success: false, message: 'Email ' + newEmail + ' is already in use by ' + data[i][0] + '.' };
       }
     }
   }
 
-  // Find and update
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][1]).trim() === String(currentPin).trim()) {
-      coachesTab.getRange(i + 1, 1, 1, 3).setValues([[name, newPin, sports]]);
+    if (String(data[i][1]).trim().toLowerCase() === String(currentEmail).trim().toLowerCase()) {
+      coachesTab.getRange(i + 1, 1, 1, 4).setValues([[name, newEmail, sports, type || 'Head']]);
       return { success: true, message: name + ' has been updated.' };
     }
   }
 
-  return { success: false, message: 'Coach with PIN ' + currentPin + ' not found.' };
+  return { success: false, message: 'Coach with email ' + currentEmail + ' not found.' };
 }
 
-/**
- * Returns all rows from the History tab, newest first.
- * Each row: [Timestamp, Student ID, Student Name, Sport, Action, From Level, To Level, Action Date, Logged By]
- */
 function getHistoryLog(schoolName) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) throw new Error('School not found.');
@@ -358,17 +256,14 @@ function getHistoryLog(schoolName) {
   const tab  = ss.getSheetByName('History');
   if (!tab) return [];
 
-  const rows = tab.getDataRange().getValues().slice(1) // skip header
-    .filter(r => r[0]) // skip blank rows
+  const rows = tab.getDataRange().getValues().slice(1) 
+    .filter(r => r[0]) 
     .map(r => r.map(cell => cell instanceof Date ? cell.toISOString() : cell));
-
-  // Return newest first
+    
   return rows.reverse();
 }
 
-// ─── PIN Validation ───────────────────────────────────────────────────────────
-
-function validateCoachPIN(schoolName, pin) {
+function validateCoachEmail(schoolName, email) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) return null;
 
@@ -377,10 +272,12 @@ function validateCoachPIN(schoolName, pin) {
   if (!sheet) return null;
 
   const data = sheet.getDataRange().getValues();
+  const inputEmail = String(email).trim().toLowerCase();
+
   for (let i = 1; i < data.length; i++) {
-    const rowPin    = String(data[i][1]).trim();
+    const rowEmail  = String(data[i][1]).trim().toLowerCase(); 
     const rowSports = String(data[i][2]).trim();
-    if (rowPin === String(pin).trim()) {
+    if (rowEmail === inputEmail) {
       return {
         name:   String(data[i][0]).trim(),
         sports: rowSports.split(',').map(s => s.trim()).filter(s => s.length > 0)
@@ -390,12 +287,7 @@ function validateCoachPIN(schoolName, pin) {
   return null;
 }
 
-/**
- * Validates an admin PIN against the Admins tab.
- * Admins tab layout: Name | Email | Role | PIN
- * Returns { name, role } on success, null on failure.
- */
-function validateAdminPIN(schoolName, pin) {
+function validateAdminEmail(schoolName, email) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) return null;
 
@@ -404,35 +296,25 @@ function validateAdminPIN(schoolName, pin) {
   if (!sheet) return null;
 
   const data = sheet.getDataRange().getValues();
-  // Ensure the input PIN is treated as a trimmed string
-  const inputPin = String(pin).trim();
+  const inputEmail = String(email).trim().toLowerCase();
 
   for (let i = 1; i < data.length; i++) {
-    // Force the cell value to a string and remove decimals if it's a number
-    let rowPin = data[i][3];
-    if (rowPin === null || rowPin === undefined) continue;
-    
-    // This handles scientific notation or .0 decimals from Google Sheets
-    rowPin = String(rowPin).split('.')[0].trim(); 
-
-    if (rowPin === inputPin) {
+    const rowEmail = String(data[i][1]).trim().toLowerCase();
+    if (rowEmail === inputEmail) {
       return {
-        name: String(data[i][0]).trim(), // col A
-        role: String(data[i][2]).trim()  // col C
+        name: String(data[i][0]).trim(), 
+        role: String(data[i][2]).trim()  
       };
     }
   }
   return null;
 }
 
-// ─── Data Functions ───────────────────────────────────────────────────────────
-
 function getDirectoryData(schoolName) {
   const config = SCHOOL_INFO[schoolName] || SCHOOL_INFO['Valhalla'];
   const ss     = SpreadsheetApp.openById(MASTER_DIRECTORY_ID);
   const sheet  = ss.getSheetByName(config.abbreviatedName);
   if (!sheet) return [];
-
   const data = sheet.getDataRange().getValues();
   data.shift();
   return data.map(row => row.map(cell =>
@@ -440,111 +322,132 @@ function getDirectoryData(schoolName) {
   ));
 }
 
+// UPDATED: This function restores the proper data package {masterHeaders, roster}
+// AND correctly reads the columns based on the new Skinny Roster format
 function getMergedSportData(schoolName, sport) {
   const config = SCHOOL_INFO[schoolName];
-  const ss     = SpreadsheetApp.openById(config.sheetID);
-  const sheet  = ss.getSheetByName(sport);
-  if (!sheet) return [];
+  if (!config) return { masterHeaders: [], roster: [] };
 
-  return sheet.getDataRange().getValues()
-    .slice(2)
-    .filter(row => row[0] && String(row[0]).trim() !== '')
-    .map(row => row.map(cell =>
-      cell instanceof Date ? cell.toLocaleDateString() : cell
-    ));
+  const ss = SpreadsheetApp.openById(config.sheetID);
+  const sportSheet = ss.getSheetByName(sport);
+  if (!sportSheet) return { masterHeaders: [], roster: [] };
+  const rosterData = sportSheet.getDataRange().getValues();
+
+  const masterSS = SpreadsheetApp.openById(MASTER_DIRECTORY_ID);
+  const masterSheet = masterSS.getSheetByName(config.abbreviatedName);
+  if (!masterSheet) return { masterHeaders: [], roster: [] };
+  const masterData = masterSheet.getDataRange().getValues();
+  const masterHeaders = masterData[0];
+
+  const masterDict = {};
+  const studentIdIndex = masterHeaders.indexOf('Student Number');
+  for (let i = 1; i < masterData.length; i++) {
+    const row = masterData[i];
+    const sId = String(row[studentIdIndex]).trim();
+    masterDict[sId] = row;
+  }
+
+  const mergedRoster = [];
+  
+  // Start loop at index 1 because Skinny Rosters only have ONE header row!
+  for (let i = 1; i < rosterData.length; i++) {
+    const rRow = rosterData[i];
+    const sId  = String(rRow[1]).trim(); // Col B is Student ID
+    if (!sId) continue;
+
+    const level       = String(rRow[2]).trim(); // Col C is Level
+    const dateAdded   = rRow[COL_DATE_ADDED];
+    const dateMoved   = rRow[COL_DATE_MOVED];
+    const dateDropped = rRow[COL_DATE_DROPPED];
+
+    const mRow = masterDict[sId] || [];
+
+    mergedRoster.push({
+      id:          sId,
+      level:       level,
+      dateAdded:   dateAdded instanceof Date ? dateAdded.toLocaleDateString() : dateAdded,
+      dateMoved:   dateMoved instanceof Date ? dateMoved.toLocaleDateString() : dateMoved,
+      dateDropped: dateDropped instanceof Date ? dateDropped.toLocaleDateString() : dateDropped,
+      masterData:  mRow
+    });
+  }
+
+  return {
+    masterHeaders: masterHeaders,
+    roster: mergedRoster
+  };
 }
 
+// UPDATED: Fixes the column indices so level changes, drops, and restores work correctly
 function updateStudentData(p) {
   if (!p || !p.school) throw new Error('Parameters missing.');
   const config = SCHOOL_INFO[p.school];
   if (!config)          throw new Error('School not found.');
-
   const ss    = SpreadsheetApp.openById(config.sheetID);
   const sheet = ss.getSheetByName(p.sport);
   if (!sheet)           throw new Error('Sport sheet not found.');
-
   const data     = sheet.getDataRange().getValues();
-  const rowIndex = data.findIndex(row => String(row[0]).trim() === String(p.id).trim());
+  
+  // Find ID in Col B (Index 1) instead of Col A
+  const rowIndex = data.findIndex(row => String(row[1]).trim() === String(p.id).trim());
   if (rowIndex === -1)  throw new Error('Student ID ' + p.id + ' not found.');
-
   const sheetRow = rowIndex + 1;
 
-  // Write the primary value (level change)
-  sheet.getRange(sheetRow, p.colIndex + 1).setValue(p.value);
-
-  // Write the appropriate date column based on action type
+  // Force update to Level column (Col 3)
+  sheet.getRange(sheetRow, 3).setValue(p.value);
+  
   const actionDate = p.actionDate || new Date().toLocaleDateString('en-US');
   if (p.action === 'DROP') {
     sheet.getRange(sheetRow, COL_DATE_DROPPED + 1).setValue(actionDate);
   } else if (p.action === 'MOVE') {
     sheet.getRange(sheetRow, COL_DATE_MOVED + 1).setValue(actionDate);
   } else if (p.action === 'RESTORE') {
-    // Clear drop date, set move date
     sheet.getRange(sheetRow, COL_DATE_DROPPED + 1).setValue('');
     sheet.getRange(sheetRow, COL_DATE_MOVED + 1).setValue(actionDate);
   }
 
-  // Log to History tab
-  const studentName = String(data[rowIndex][3] || '') + ' ' + String(data[rowIndex][2] || '');
+  // Name is now in Col A (Index 0)
+  const studentName = String(data[rowIndex][0] || '');
   logHistoryEntry(p.school, {
     studentId:   p.id,
     studentName: studentName.trim(),
     sport:       p.sport,
     action:      p.action || 'UPDATE',
-    fromLevel:   String(data[rowIndex][1] || ''),
+    fromLevel:   String(data[rowIndex][2] || ''), // Level is Col C (Index 2)
     toLevel:     p.value,
     actionDate:  actionDate,
     loggedBy:    p.loggedBy || ''
   });
-
   return getMergedSportData(p.school, p.sport);
 }
 
-/**
- * Appends a row to the History tab. Auto-creates the tab if it doesn't exist.
- * Also schedules a debounced notification email for admins who opt in.
- */
 function logHistoryEntry(schoolName, entry) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) return;
 
   const ss = SpreadsheetApp.openById(config.sheetID);
   let historyTab = ss.getSheetByName('History');
-
   if (!historyTab) {
     historyTab = ss.insertSheet('History');
     historyTab.getRange(1, 1, 1, HISTORY_HEADERS[0].length).setValues(HISTORY_HEADERS);
-    // Freeze header row and bold it
     historyTab.setFrozenRows(1);
     historyTab.getRange(1, 1, 1, HISTORY_HEADERS[0].length).setFontWeight('bold');
   }
 
   historyTab.appendRow([
-    new Date(),          // Timestamp (server time)
+    new Date(),
     entry.studentId,
     entry.studentName,
     entry.sport,
     entry.action,
     entry.fromLevel,
     entry.toLevel,
-    entry.actionDate,    // Coach-provided date
+    entry.actionDate, 
     entry.loggedBy
   ]);
-
-  // Queue a debounced notification email
   scheduleNotificationEmail(schoolName, entry);
 }
 
-// ─── Notification System ──────────────────────────────────────────────────────
-
-/**
- * Reads the Admins tab and returns email addresses for admins who have
- * "Receives Updates" set to Y in column E.
- * Admins tab layout: Name (A) | Email (B) | Role (C) | PIN (D) | Receives Updates (E)
- *
- * @param {string} schoolName
- * @returns {string[]} array of email addresses
- */
 function getNotificationRecipients(schoolName) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) return [];
@@ -553,7 +456,7 @@ function getNotificationRecipients(schoolName) {
   const sheet = ss.getSheetByName('Admins');
   if (!sheet) return [];
 
-  const data = sheet.getDataRange().getValues().slice(1); // skip header
+  const data = sheet.getDataRange().getValues().slice(1); 
   return data
     .filter(row => {
       const email      = String(row[1] || '').trim();
@@ -563,34 +466,17 @@ function getNotificationRecipients(schoolName) {
     .map(row => String(row[1]).trim());
 }
 
-/**
- * Pending-notifications tab headers.
- * Columns: School | Sport | Action | Student Name | Student ID |
- *          From Level | To Level | Action Date | Logged By | Queued At | Sent
- */
 const NOTIFICATIONS_HEADERS = [[
   'School', 'Sport', 'Action', 'Student Name', 'Student ID',
   'From Level', 'To Level', 'Action Date', 'Logged By', 'Queued At', 'Sent'
 ]];
 
-/**
- * Writes one pending-notification row to the school's Notifications tab,
- * then ensures a time-based trigger will fire ~1 hour from now to flush them.
- *
- * The trigger is stored in Script Properties as
- *   "notif_trigger_<sheetID>" → triggerId
- * so we only ever have one pending trigger per school at a time.
- *
- * @param {string} schoolName
- * @param {object} entry  - same shape as logHistoryEntry's entry param
- */
 function scheduleNotificationEmail(schoolName, entry) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) return;
 
   const ss = SpreadsheetApp.openById(config.sheetID);
 
-  // Auto-create Notifications tab if needed
   let notifTab = ss.getSheetByName('Notifications');
   if (!notifTab) {
     notifTab = ss.insertSheet('Notifications');
@@ -599,7 +485,6 @@ function scheduleNotificationEmail(schoolName, entry) {
     notifTab.getRange(1, 1, 1, NOTIFICATIONS_HEADERS[0].length).setFontWeight('bold');
   }
 
-  // Append the pending row (Sent = N)
   notifTab.appendRow([
     schoolName,
     entry.sport,
@@ -610,51 +495,30 @@ function scheduleNotificationEmail(schoolName, entry) {
     entry.toLevel   || '',
     entry.actionDate,
     entry.loggedBy  || '',
-    new Date(),   // Queued At
-    'N'           // Sent flag
+    new Date(),  
+    'N'           
   ]);
 
-  // Check if a trigger is already scheduled for this school
   const props    = PropertiesService.getScriptProperties();
   const propKey  = 'notif_trigger_' + config.sheetID;
   const existing = props.getProperty(propKey);
+  if (existing) return;
 
-  if (existing) {
-    // A trigger is already pending — nothing more to do.
-    // The existing trigger will pick up this new row when it fires.
-    return;
-  }
-
-  // No pending trigger — create one to fire in ~65 minutes
-  // (65 min gives Apps Script's trigger a comfortable margin around the 1-hour mark)
   const trigger = ScriptApp.newTrigger('sendPendingNotifications')
     .timeBased()
     .after(65 * 60 * 1000)
     .create();
-
   props.setProperty(propKey, trigger.getUniqueId());
 }
 
-/**
- * Time-based trigger target.
- * Reads every school's Notifications tab, groups unsent rows by school,
- * sends one summary email per school to opted-in admins, then marks rows sent.
- *
- * This function is registered as a trigger by scheduleNotificationEmail.
- * It self-cleans its own trigger from Script Properties when done.
- */
 function sendPendingNotifications() {
   const props = PropertiesService.getScriptProperties();
   const allProps = props.getProperties();
 
-  // Find all pending-trigger property keys
   const triggerKeys = Object.keys(allProps).filter(k => k.startsWith('notif_trigger_'));
-
   triggerKeys.forEach(propKey => {
-    // Derive sheetID from the property key
     const sheetID = propKey.replace('notif_trigger_', '');
 
-    // Find which school this sheetID belongs to
     const schoolName = Object.keys(SCHOOL_INFO).find(
       name => SCHOOL_INFO[name].sheetID === sheetID
     );
@@ -671,13 +535,12 @@ function sendPendingNotifications() {
     const data = notifTab.getDataRange().getValues();
     if (data.length <= 1) { props.deleteProperty(propKey); return; }
 
-    // Collect unsent rows (col index 10 = Sent flag)
     const unsentRows    = [];
     const unsentIndices = [];
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][10]).trim().toUpperCase() === 'N') {
         unsentRows.push(data[i]);
-        unsentIndices.push(i + 1); // 1-based sheet row
+        unsentIndices.push(i + 1);
       }
     }
 
@@ -696,15 +559,11 @@ function sendPendingNotifications() {
       });
     }
 
-    // Mark all flushed rows as sent
     unsentIndices.forEach(rowNum => {
       notifTab.getRange(rowNum, 11).setValue('Y');
     });
 
-    // Remove the trigger property so a new trigger can be created next time
     props.deleteProperty(propKey);
-
-    // Also delete the actual Apps Script trigger object
     const triggerId = allProps[propKey];
     ScriptApp.getProjectTriggers().forEach(t => {
       if (t.getUniqueId() === triggerId) ScriptApp.deleteTrigger(t);
@@ -712,13 +571,6 @@ function sendPendingNotifications() {
   });
 }
 
-/**
- * Builds an HTML email body summarising all roster changes.
- *
- * @param {string}   schoolName
- * @param {Array[]}  rows  - unsent notification rows from the Notifications tab
- * @returns {string} HTML string
- */
 function buildNotificationEmailBody(schoolName, rows) {
   const config     = SCHOOL_INFO[schoolName];
   const color      = config ? config.primaryColor : '#2c66b8';
@@ -728,8 +580,7 @@ function buildNotificationEmailBody(schoolName, rows) {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: 'numeric', minute: '2-digit', hour12: true
   });
-
-  // Group rows by sport for a cleaner layout
+  
   const bySport = {};
   rows.forEach(row => {
     const sport = String(row[1] || 'Unknown').trim();
@@ -751,12 +602,11 @@ function buildNotificationEmailBody(schoolName, rows) {
       const from      = String(row[5] || '').trim();
       const to        = String(row[6] || '').trim();
       let date        = String(row[7] || '').trim();
+      
       if (date && date!== '') {
         try {
-          // If it's already a date object or a valid date string, format it
           date = Utilities.formatDate(new Date(date), "America/Los_Angeles", "MM/dd/yyyy");
         } catch (e) {
-          // If it's not a valid date, keep the original string as a fallback
           console.warn("Could not format date:", date);
         }
       }
@@ -764,7 +614,6 @@ function buildNotificationEmailBody(schoolName, rows) {
       const label     = actionLabel[action] || action;
       const aColor    = actionColor[action] || '#475569';
       const aBg       = actionBg[action]    || '#f1f5f9';
-
       const levelChange = action === 'ADD'
         ? `<span style="color:#475569;">&rarr; ${to}</span>`
         : `<span style="color:#94a3b8; text-decoration:line-through;">${from}</span>
@@ -823,13 +672,9 @@ function buildNotificationEmailBody(schoolName, rows) {
   return `
     <!DOCTYPE html>
     <html>
-    <body style="font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
-                 background:#f1f5f9; margin:0; padding:24px;">
+    <body style="font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:#f1f5f9; margin:0; padding:24px;">
       <div style="max-width:1000px; margin:0 auto;">
-
-        <!-- Header -->
-        <div style="background:${color}; border-radius:12px 12px 0 0;
-                    padding:20px 24px; display:flex; align-items:center; gap:16px;">
+        <div style="background:${color}; border-radius:12px 12px 0 0; padding:20px 24px; display:flex; align-items:center; gap:16px;">
           ${logoUrl ? `<img src="${logoUrl}" style="height:48px; object-fit:contain; filter:drop-shadow(0 0 4px rgba(0,0,0,0.3));">` : ''}
           <div>
             <div style="color:white; font-size:18px; font-weight:800; letter-spacing:0.02em;">
@@ -840,28 +685,22 @@ function buildNotificationEmailBody(schoolName, rows) {
             </div>
           </div>
         </div>
-
-        <!-- Body -->
-        <div style="background:#f8fafc; padding:24px; border:1px solid #e2e8f0; border-top:none;
-                    border-radius:0 0 12px 12px;">
-
+        <div style="background:#f8fafc; padding:24px; border:1px solid #e2e8f0; border-top:none; border-radius:0 0 12px 12px;">
           <p style="color:#475569; margin:0 0 20px 0; font-size:14px;">
             The following roster changes were recorded in the past hour:
           </p>
-
           ${sportsHtml}
-
           <p style="color:#94a3b8; font-size:12px; margin:16px 0 0 0; text-align:center;">
             This is an automated summary from the ${schoolName} Roster Manager.
             All changes are also recorded in the History Log.
           </p>
-
         </div>
       </div>
     </body>
     </html>`;
 }
 
+// UPDATED: Fixes the column indices so newly added students land in the right columns
 function addBulkStudentsToSport(schoolName, sportName, studentArray, level, actionDate, loggedBy) {
   const config = SCHOOL_INFO[schoolName];
   if (!config || !config.sheetID) throw new Error('School config missing.');
@@ -874,11 +713,15 @@ function addBulkStudentsToSport(schoolName, sportName, studentArray, level, acti
 
   studentArray.forEach(student => {
     const lastRow = sheet.getLastRow();
-    sheet.getRange(lastRow + 1, 1).setValue(student[0]); // Student ID
-    sheet.getRange(lastRow + 1, 2).setValue(level);       // Level
-    sheet.getRange(lastRow + 1, COL_DATE_ADDED + 1).setValue(date);
+    
+    // Format Name as "Last, First" for Column A
+    const studentName = String(student[2] || '') + ', ' + String(student[1] || '');
+    
+    sheet.getRange(lastRow + 1, 1).setValue(studentName); // Col A: Name
+    sheet.getRange(lastRow + 1, 2).setValue(student[0]);  // Col B: ID
+    sheet.getRange(lastRow + 1, 3).setValue(level);       // Col C: Level       
+    sheet.getRange(lastRow + 1, COL_DATE_ADDED + 1).setValue(date); // Col D: Date Added
 
-    const studentName = String(student[2] || '') + ' ' + String(student[1] || '');
     logHistoryEntry(schoolName, {
       studentId:   student[0],
       studentName: studentName.trim(),
@@ -894,6 +737,56 @@ function addBulkStudentsToSport(schoolName, sportName, studentArray, level, acti
   return true;
 };
 
+function getDynamicCalendar() {
+  const cache = CacheService.getScriptCache();
+  const cachedData = cache.get('calendar_settings');
+  
+  if (cachedData) {
+    return JSON.parse(cachedData);
+  }
 
+  const ss = SpreadsheetApp.openById(MASTER_DIRECTORY_ID);
+  const sheet = ss.getSheetByName('Settings');
+  if (!sheet) throw new Error("Settings tab missing in Master Directory");
+  
+  const data = sheet.getDataRange().getDisplayValues(); 
+  
+  const dynamicPeriods = [];
+  const dynamicSeasons = {};
+  const dynamicSeasonPeriods = {};
 
+  for (let i = 1; i < data.length; i++) {
+    
+    if (data[i][0]) {
+      dynamicPeriods.push({
+        key:    String(data[i][0]).trim(),
+        label:  String(data[i][1]).trim(),
+        start:  String(data[i][2]).trim(),
+        end:    String(data[i][3]).trim(),
+        prefix: String(data[i][4]).trim()
+      });
+    }
 
+    if (data[i][6]) {
+      const seasonName = String(data[i][6]).trim().toUpperCase();
+      
+      dynamicSeasons[seasonName] = {
+        start: String(data[i][7]).trim(),
+        end:   String(data[i][8]).trim()
+      };
+
+      const periodsString = String(data[i][9]).trim();
+      dynamicSeasonPeriods[seasonName] = periodsString.split(',').map(p => p.trim());
+    }
+  }
+
+  const fullCalendar = {
+    seasons:        dynamicSeasons,
+    gradingPeriods: dynamicPeriods,
+    seasonPeriods:  dynamicSeasonPeriods
+  };
+
+  cache.put('calendar_settings', JSON.stringify(fullCalendar), 21600); 
+  
+  return fullCalendar;
+}
