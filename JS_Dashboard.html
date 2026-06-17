@@ -1,9 +1,9 @@
 <script>
 // ── Dashboard State ───────────────────────────────────────────────────────────
 
-let dashboardData   = null;  // { sports: [], coaches: [], admins: [] }
-let editingCoachPin = null;  // PIN of coach being edited, or null
-let openSports      = {};    // tracks which sport accordions are open: { 'Football': true }
+let dashboardData     = null;  // { sports: [], coaches: [], admins: [] }
+let editingCoachEmail = null;  // Email of coach being edited, or null
+let openSports        = {};    // tracks which sport accordions are open: { 'Football': true }
 
 // ── Entry Point ───────────────────────────────────────────────────────────────
 
@@ -89,7 +89,6 @@ function renderSeasonColumn(season, icon) {
         </button>
       </div>
 
-      <!-- Add Sport inline form -->
       <div id="add-sport-form-${season}" class="dash-inline-form" style="display:none;">
         <select id="sport-select-${season}" class="dash-input-sm"
                 onchange="handleSportSelectChange('${season}')">
@@ -108,7 +107,6 @@ function renderSeasonColumn(season, icon) {
         <div id="sport-msg-${season}" class="dash-inline-msg"></div>
       </div>
 
-      <!-- Sports accordion list -->
       <div id="sports-accordion-${season}">
         ${sportsHtml}
       </div>
@@ -131,7 +129,7 @@ function renderSportRow(sport) {
           <div class="dash-coach-item-info">
             <span class="dash-coach-item-name">${coach.name}</span>
             <span class="dash-pin-badge">
-              <i class="fa-solid fa-lock"></i> ${coach.pin}
+              <i class="fa-solid fa-envelope"></i> ${coach.email}
             </span>
             <span class="dash-type-badge dash-type-${(coach.type || 'Head').toLowerCase()}">
               ${coach.type === 'Assistant' ? 'Asst' : 'Head'}
@@ -139,12 +137,12 @@ function renderSportRow(sport) {
           </div>
           <div class="dash-coach-item-actions">
             <button class="dash-icon-btn dash-btn-edit"
-                    onclick="openEditCoach('${coach.pin}', '${safeName}')"
+                    onclick="openEditCoach('${coach.email}', '${safeName}')"
                     title="Edit">
               <i class="fa-solid fa-pen"></i>
             </button>
             <button class="dash-icon-btn dash-btn-danger"
-                    onclick="confirmRemoveCoach('${coach.pin}', '${coach.name.replace(/'/g, "\\'")}')"
+                    onclick="confirmRemoveCoach('${coach.email}', '${coach.name.replace(/'/g, "\\'")}')"
                     title="Remove">
               <i class="fa-solid fa-trash"></i>
             </button>
@@ -155,7 +153,6 @@ function renderSportRow(sport) {
     <div class="dash-sport-item ${sport.active ? '' : 'dash-sport-archived'}"
          id="sport-item-${safeKey}">
 
-      <!-- Clickable sport header -->
       <div class="dash-sport-item-header"
            onclick="toggleSportAccordion('${safeName}', '${safeKey}')">
         <div class="dash-sport-item-left">
@@ -185,16 +182,13 @@ function renderSportRow(sport) {
         </div>
       </div>
 
-      <!-- Accordion body -->
       <div class="dash-sport-accordion ${isOpen ? 'open' : ''}"
            id="accordion-${safeKey}">
 
-        <!-- Add / Edit Coach form (hidden by default) -->
         <div id="coach-form-${safeKey}" class="dash-coach-form" style="display:none;">
           <div class="dash-coach-form-title" id="cf-title-${safeKey}">Add Coach</div>
           <input type="text" id="cf-name-${safeKey}"   class="dash-input-sm" placeholder="Full name">
-          <input type="tel"  id="cf-pin-${safeKey}"    class="dash-input-sm" placeholder="4-digit PIN"
-                 maxlength="4" inputmode="numeric" style="margin-top:6px;">
+          <input type="email" id="cf-email-${safeKey}" class="dash-input-sm" placeholder="GUHSD Email Address" style="margin-top:6px;">
           <input type="text" id="cf-sports-${safeKey}" class="dash-input-sm"
                  placeholder="Sports (comma separated)" style="margin-top:6px;">
           <select id="cf-type-${safeKey}" class="dash-input-sm" style="margin-top:6px;">
@@ -265,11 +259,6 @@ function renderArchivedColumn() {
 
 // ── Targeted Column Re-render ─────────────────────────────────────────────────
 
-/**
- * Re-renders just one season column's sports list in place using in-memory
- * dashboardData — no server round-trip, other columns untouched.
- * Pass 'ARCHIVED' to rerender the archived column.
- */
 function rerenderColumn(season) {
   if (season === 'ARCHIVED') {
     const container = document.getElementById('sports-accordion-ARCHIVED');
@@ -313,9 +302,6 @@ function rerenderColumn(season) {
     : sports.map(sport => renderSportRow(sport)).join('');
 }
 
-/**
- * Returns the season key for a given sport name by looking it up in dashboardData.
- */
 function getSeasonForDashSport(sportName) {
   const sport = dashboardData.sports.find(s => s.name === sportName);
   return sport ? sport.season : null;
@@ -343,11 +329,11 @@ function getCoachesForSport(sportName) {
 }
 
 function openAddCoachForm(sportName, safeKey) {
-  editingCoachPin = null;
+  editingCoachEmail = null;
   document.getElementById(`cf-title-${safeKey}`).innerText  = 'Add Coach';
   document.getElementById(`cf-submit-${safeKey}`).innerText = 'Add';
   document.getElementById(`cf-name-${safeKey}`).value       = '';
-  document.getElementById(`cf-pin-${safeKey}`).value        = '';
+  document.getElementById(`cf-email-${safeKey}`).value      = '';
   document.getElementById(`cf-sports-${safeKey}`).value     = sportName;
   document.getElementById(`cf-type-${safeKey}`).value       = 'Head';
   document.getElementById(`cf-msg-${safeKey}`).innerText    = '';
@@ -355,17 +341,17 @@ function openAddCoachForm(sportName, safeKey) {
   document.getElementById(`cf-name-${safeKey}`).focus();
 }
 
-function openEditCoach(pin, sportName) {
-  const coach   = dashboardData.coaches.find(c => c.pin === pin);
+function openEditCoach(email, sportName) {
+  const coach   = dashboardData.coaches.find(c => c.email === email);
   if (!coach) return;
   const safeKey = sportName.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '_');
-  editingCoachPin = pin;
+  editingCoachEmail = email;
   // Make sure accordion is open
   if (!openSports[sportName]) toggleSportAccordion(sportName, safeKey);
   document.getElementById(`cf-title-${safeKey}`).innerText  = 'Edit Coach';
   document.getElementById(`cf-submit-${safeKey}`).innerText = 'Save';
   document.getElementById(`cf-name-${safeKey}`).value       = coach.name;
-  document.getElementById(`cf-pin-${safeKey}`).value        = coach.pin;
+  document.getElementById(`cf-email-${safeKey}`).value      = coach.email;
   document.getElementById(`cf-sports-${safeKey}`).value     = coach.sports;
   document.getElementById(`cf-type-${safeKey}`).value       = coach.type || 'Head';
   document.getElementById(`cf-msg-${safeKey}`).innerText    = '';
@@ -374,14 +360,14 @@ function openEditCoach(pin, sportName) {
 }
 
 function cancelCoachForm(sportName, safeKey) {
-  editingCoachPin = null;
+  editingCoachEmail = null;
   document.getElementById(`coach-form-${safeKey}`).style.display = 'none';
   document.getElementById(`cf-msg-${safeKey}`).innerText         = '';
 }
 
 function submitCoachForm(sportName, safeKey) {
   const name   = document.getElementById(`cf-name-${safeKey}`).value.trim();
-  const pin    = document.getElementById(`cf-pin-${safeKey}`).value.trim();
+  const email  = document.getElementById(`cf-email-${safeKey}`).value.trim();
   const sports = document.getElementById(`cf-sports-${safeKey}`).value.trim();
   const type   = document.getElementById(`cf-type-${safeKey}`).value;
   const msgEl  = document.getElementById(`cf-msg-${safeKey}`);
@@ -389,9 +375,9 @@ function submitCoachForm(sportName, safeKey) {
   msgEl.innerText = '';
   msgEl.className = 'dash-inline-msg';
 
-  if (!name)                 { msgEl.innerText = 'Name required.';            return; }
-  if (!/^\d{4}$/.test(pin)) { msgEl.innerText = 'PIN must be 4 digits.';     return; }
-  if (!sports)               { msgEl.innerText = 'At least one sport needed.'; return; }
+  if (!name)                               { msgEl.innerText = 'Name required.';            return; }
+  if (!email || !email.includes('@'))      { msgEl.innerText = 'Valid email required.';     return; }
+  if (!sports)                             { msgEl.innerText = 'At least one sport needed.'; return; }
 
   msgEl.innerText = 'Saving...';
 
@@ -402,15 +388,15 @@ function submitCoachForm(sportName, safeKey) {
     msgEl.className = 'dash-inline-msg ' + (result.success ? 'dash-msg-success' : 'dash-msg-error');
     msgEl.innerText = result.message;
     if (result.success) {
-      if (editingCoachPin) {
+      if (editingCoachEmail) {
         // Update coach in memory
-        const idx = dashboardData.coaches.findIndex(c => c.pin === editingCoachPin);
-        if (idx !== -1) dashboardData.coaches[idx] = { name, pin, sports, type };
+        const idx = dashboardData.coaches.findIndex(c => c.email === editingCoachEmail);
+        if (idx !== -1) dashboardData.coaches[idx] = { name, email, sports, type };
       } else {
         // Add coach to memory
-        dashboardData.coaches.push({ name, pin, sports, type });
+        dashboardData.coaches.push({ name, email, sports, type });
       }
-      editingCoachPin = null;
+      editingCoachEmail = null;
 
       // Re-render all columns this coach's sports touch
       const affectedSeasons = new Set(
@@ -427,29 +413,29 @@ function submitCoachForm(sportName, safeKey) {
     msgEl.innerText = 'Error: ' + err.message;
   };
 
-  if (editingCoachPin) {
+  if (editingCoachEmail) {
     google.script.run.withSuccessHandler(onResult).withFailureHandler(onError)
-      .updateCoach(window.GLOBAL_SCHOOL, editingCoachPin, name, pin, sports, type);
+      .updateCoach(window.GLOBAL_SCHOOL, editingCoachEmail, name, email, sports, type);
   } else {
     google.script.run.withSuccessHandler(onResult).withFailureHandler(onError)
-      .addCoach(window.GLOBAL_SCHOOL, name, pin, sports, type);
+      .addCoach(window.GLOBAL_SCHOOL, name, email, sports, type);
   }
 }
 
-function confirmRemoveCoach(pin, name) {
+function confirmRemoveCoach(email, name) {
   if (!confirm(`Remove ${name}?\n\nThey will no longer be able to log in.`)) return;
   google.script.run
     .withSuccessHandler(result => {
       if (result.success) {
         // Find which seasons this coach's sports belong to before removing
-        const coach = dashboardData.coaches.find(c => c.pin === pin);
+        const coach = dashboardData.coaches.find(c => c.email === email);
         const affectedSeasons = new Set(
           (coach ? coach.sports : '').split(',')
             .map(s => getSeasonForDashSport(s.trim()))
             .filter(Boolean)
         );
         // Remove from memory
-        dashboardData.coaches = dashboardData.coaches.filter(c => c.pin !== pin);
+        dashboardData.coaches = dashboardData.coaches.filter(c => c.email !== email);
         // Re-render affected columns
         affectedSeasons.forEach(season => rerenderColumn(season));
         showDashToast(result.message, 'success');
@@ -458,7 +444,7 @@ function confirmRemoveCoach(pin, name) {
       }
     })
     .withFailureHandler(err => showDashToast('Error: ' + err.message, 'error'))
-    .removeCoach(window.GLOBAL_SCHOOL, pin);
+    .removeCoach(window.GLOBAL_SCHOOL, email);
 }
 
 // ── Add Sport Form ────────────────────────────────────────────────────────────
