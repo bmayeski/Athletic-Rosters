@@ -169,26 +169,6 @@
           </button>
         </div>
       </div>
-
-      <!-- PIN entry — shown after role is selected -->
-      <div id="pin-entry-card" class="pin-card" style="display:none;">
-        <button class="pin-back-btn" onclick="showRoleSelect()">
-          <i class="fa-solid fa-arrow-left"></i> Back
-        </button>
-        <h2 id="pin-entry-title">Enter Your PIN</h2>
-
-        <label class="pin-field-label" for="pin-input">4-Digit PIN</label>
-        <input type="tel" id="pin-input" class="pin-input"
-               maxlength="4" placeholder="····"
-               onkeyup="handlePinKeyup(event)"
-               inputmode="numeric" pattern="[0-9]*">
-
-        <button id="pin-submit-btn" class="pin-submit-btn" onclick="submitPIN()">
-          Enter
-        </button>
-
-        <div id="pin-error" class="pin-error"></div>
-      </div>
     </div> <!-- end #pin-screen -->
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
@@ -309,10 +289,18 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-          <button id="saveRosterBtn" class="btn-primary" onclick="saveBulkRoster()" disabled>
-            Save All to Roster
-          </button>
+          <div class="modal-footer-date">
+            <label class="modal-date-label" for="addStudentDate">
+              <i class="fa-solid fa-calendar-day"></i> Date Added
+            </label>
+            <input type="date" id="addStudentDate" class="modal-date-input">
+          </div>
+          <div class="modal-footer-actions">
+            <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+            <button id="saveRosterBtn" class="btn-primary" onclick="saveBulkRoster()" disabled>
+              Save All to Roster
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -435,5 +423,11 @@
       document.getElementById('pin-screen').style.display     = 'flex';
     })();
   </script>
+
+  <?!= include('JS_Table'); ?>
+  <?!= include('JS_Mapping'); ?>
+  <?!= include('JS_Modals'); ?>
+  <?!= include('JS_Dashboard'); ?>
+  <?!= include('JS_CoachView'); ?>
 
 </html>
