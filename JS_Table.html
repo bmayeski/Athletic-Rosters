@@ -43,18 +43,35 @@ function handleSportClick(element, season, sport) {
 
 // ─── Render Functions ─────────────────────────────────────────────────────────
 
-function renderRosterTables(dataArr) {
+function renderRosterTables(payload) {
   const container = document.getElementById('roster-tables-container');
+  if (!container) return;
   container.innerHTML = '';
+
+  let masterHeaders = [];
+  let rosterData = [];
+
+  // Safely unpack the new `{ masterHeaders, roster }` payload
+  if (payload && Array.isArray(payload.roster)) {
+    rosterData = payload.roster;
+    masterHeaders = payload.masterHeaders;
+  } else if (Array.isArray(payload)) {
+    rosterData = payload; 
+  }
 
   const levels = ['Varsity', 'Junior Varsity', 'Freshman', 'Dropped'];
 
   levels.forEach(level => {
-    const filteredRows = dataArr
-      ? dataArr
-          .filter(row => String(row[1]).trim() === level)
-          .sort((a, b) => String(a[2] || '').localeCompare(String(b[2] || '')))
-      : [];
+    const idxLast = masterHeaders.indexOf('Last Name');
+    
+    const filteredRows = rosterData
+      .filter(row => row.level === level)
+      .sort((a, b) => {
+         const nameA = String(a.masterData[idxLast] || '').toLowerCase();
+         const nameB = String(b.masterData[idxLast] || '').toLowerCase();
+         return nameA.localeCompare(nameB);
+      });
+
     const section      = document.createElement('div');
     section.className  = 'level-section mb-5';
 
@@ -83,7 +100,7 @@ function renderRosterTables(dataArr) {
 
     if (level !== 'Dropped') {
       const addBtn     = document.createElement('button');
-      addBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Add';
+      addBtn.innerHTML = '<i class="fa-solid fa-circle-plus"></i> Add';
       addBtn.className = 'add-student-btn';
       addBtn.onclick   = () => openAddStudentModal(level);
       btnGroup.appendChild(addBtn);
@@ -93,7 +110,7 @@ function renderRosterTables(dataArr) {
     const copyBtn     = document.createElement('button');
     copyBtn.className = 'add-student-btn ic-copy-btn';
     copyBtn.title     = `Copy ${level} student IDs for IC Ad Hoc filter`;
-    copyBtn.innerHTML = '<i class="fa-solid fa-copy"></i> Copy IDs';
+    copyBtn.innerHTML = '<i class="fa-regular fa-copy"></i> Copy IDs';
     if (filteredRows.length === 0) {
       copyBtn.disabled = true;
       copyBtn.style.opacity = '0.4';
@@ -109,13 +126,14 @@ function renderRosterTables(dataArr) {
       const tableWrapper = document.createElement('div');
       tableWrapper.id    = 'wrapper-' + level.replace(/\s+/g, '');
       section.appendChild(tableWrapper);
-      buildModernTable([null].concat(filteredRows), tableWrapper, 'table-' + level.replace(/\s+/g, ''), {
+      
+      buildModernTable(filteredRows, masterHeaders, tableWrapper, 'table-' + level.replace(/\s+/g, ''), {
         autoHeight: true,
-        colMap: buildRosterColMap(window.ACTIVE_SEASON || 'SPRING', dataArr)
+        colMap: buildRosterColMap(window.ACTIVE_SEASON || 'SPRING', masterHeaders, rosterData)
       });
     } else {
       const emptyDiv         = document.createElement('div');
-      emptyDiv.style.cssText = 'padding: 20px; background: #f8f9fa; border: 1px dashed #ccc; border-radius: 8px; text-align: center; color: #888;';
+      emptyDiv.style.cssText = 'padding: 16px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; text-align: center; color: #94a3b8; font-size: 0.9rem; margin-bottom: 20px;';
       emptyDiv.innerText     = `No students currently in ${level}.`;
       section.appendChild(emptyDiv);
     }
@@ -124,61 +142,39 @@ function renderRosterTables(dataArr) {
   });
 }
 
-// ─── Period Header Map ────────────────────────────────────────────────────────
-
-const PERIOD_HEADER_MAP = {
-  'S1 - 6 Week':  'S1_6WK',
-  'S1 - 12 Week': 'S1_12WK',
-  'S1 - Finals':  'S1_FINALS',
-  'S2 - 6 Week':  'S2_6WK',
-  'S2 - 12 Week': 'S2_12WK',
-  'S2 - Finals':  'S2_FINALS'
-};
-
-// Date column indices (0-based), matching Code.gs constants
-const TABLE_COL_DATE_ADDED   = 27;
-const TABLE_COL_DATE_MOVED   = 28;
-const TABLE_COL_DATE_DROPPED = 29;
-
 // ─── Table Builder ────────────────────────────────────────────────────────────
 
-function buildModernTable(dataArr, target, tableId, options = {}) {
+function buildModernTable(dataArr, headers, target, tableId, options = {}) {
   const container = (typeof target === 'string') ? document.getElementById(target) : target;
-  if (!container || !dataArr || dataArr.length <= 1) return;
+  if (!container || !dataArr) return;
 
   const { autoHeight = false, maxHeight = null, colMap = null } = options;
   const viewportClass = autoHeight ? 'table-viewport-auto' : 'table-viewport';
   const styleAttr     = maxHeight ? `style="max-height: ${maxHeight};"` : '';
 
-  const activePeriod = getActivePeriod();
-
   // Build header row — prepend an expand column
   const expandTh   = `<th class="col-expand"></th>`;
   const headerHtml = colMap
-    ? colMap.map(m => {
-        return `<th class="${m.className || ''}" style="text-align: ${m.align || 'left'}">${m.header}</th>`;
-      }).join('')
-    : dataArr[1] ? dataArr[1].map(h => `<th>${h}</th>`).join('') : '';
+    ? colMap.map(m => `<th class="${m.className || ''}" style="text-align: ${m.align || 'left'}">${m.header}</th>`).join('')
+    : '';
 
-  const totalCols = (colMap ? colMap.length : 0) + 1; // +1 for expand column
+  const totalCols = (colMap ? colMap.length : 0) + 1; 
 
   let html = `<div class="${viewportClass}" ${styleAttr}>
                 <table class="roster-table" id="${tableId}">
                   <thead><tr>${expandTh}${headerHtml}</tr></thead>
                   <tbody>`;
 
-  for (let i = 1; i < dataArr.length; i++) {
+  for (let i = 0; i < dataArr.length; i++) {
     const row     = dataArr[i];
-    const rowId   = String(row[0] || '').trim();
+    const rowId   = String(row.id || '').trim();
     const safeId  = rowId.replace(/[^a-zA-Z0-9]/g, '_');
 
-    // Date values for this row
-    const dateAdded   = row[TABLE_COL_DATE_ADDED]   || '';
-    const dateMoved   = row[TABLE_COL_DATE_MOVED]   || '';
-    const dateDropped = row[TABLE_COL_DATE_DROPPED] || '';
+    const dateAdded   = row.dateAdded   || '';
+    const dateMoved   = row.dateMoved   || '';
+    const dateDropped = row.dateDropped || '';
     const hasDates    = dateAdded || dateMoved || dateDropped;
 
-    // Expand chevron cell — only show if there are dates to show
     const chevronCell = hasDates
       ? `<td class="col-expand">
            <button class="row-expand-btn" onclick="toggleRowDetail('detail-${safeId}', this)"
@@ -188,22 +184,19 @@ function buildModernTable(dataArr, target, tableId, options = {}) {
          </td>`
       : `<td class="col-expand"></td>`;
 
-    // Data cells
     let dataCells = '';
     if (colMap) {
       colMap.forEach(config => {
-        const cellValue = (typeof config.formatter === 'function')
-          ? config.formatter(row, i - 1)
-          : (row[config.index] || '');
+        const cellValue = config.formatter(row);
         dataCells += `<td style="text-align: ${config.align || 'left'}">${cellValue}</td>`;
       });
-    } else {
-      row.forEach(cell => { dataCells += `<td>${cell || ''}</td>`; });
     }
 
-    html += `<tr class="roster-data-row">${chevronCell}${dataCells}</tr>`;
+    // Embed the searchable name in a data attribute to keep filterRoster fast
+    const searchName = (row.masterData[headers.indexOf('Last Name')] + ' ' + row.masterData[headers.indexOf('First Name')]).toUpperCase();
+    
+    html += `<tr class="roster-data-row" data-search="${searchName}">${chevronCell}${dataCells}</tr>`;
 
-    // Detail row (hidden by default) — only injected if there are dates
     if (hasDates) {
       const datePills = buildDatePills(dateAdded, dateMoved, dateDropped);
       html += `
@@ -230,7 +223,6 @@ function buildModernTable(dataArr, target, tableId, options = {}) {
  */
 function buildDatePills(dateAdded, dateMoved, dateDropped) {
   let html = '';
-
   if (dateAdded) {
     html += `<span class="date-pill date-pill-added">
                <i class="fa-solid fa-user-plus"></i>
@@ -252,13 +244,9 @@ function buildDatePills(dateAdded, dateMoved, dateDropped) {
                ${dateDropped}
              </span>`;
   }
-
   return html;
 }
 
-/**
- * Toggles the detail row open/closed and animates the chevron.
- */
 function toggleRowDetail(detailRowId, btn) {
   const detailRow = document.getElementById(detailRowId);
   if (!detailRow) return;
@@ -277,11 +265,10 @@ function filterRoster() {
   const filter = document.getElementById('rosterSearch').value.toUpperCase();
   document.querySelectorAll('.roster-table').forEach(table => {
     Array.from(table.querySelectorAll('tr.roster-data-row')).forEach(tr => {
-      const td = tr.querySelector('td:nth-child(2)'); // skip expand column
-      const matches = td && (td.textContent || td.innerText).toUpperCase().includes(filter);
+      const searchName = tr.getAttribute('data-search') || '';
+      const matches = searchName.includes(filter);
       tr.style.display = matches ? '' : 'none';
 
-      // Also hide/show the paired detail row
       const btn    = tr.querySelector('.row-expand-btn');
       const safeId = btn ? btn.getAttribute('onclick').match(/detail-([^']+)/)?.[1] : null;
       if (safeId) {
@@ -290,6 +277,239 @@ function filterRoster() {
       }
     });
   });
+}
+
+// ─── Formatting ───────────────────────────────────────────────────────────────
+
+function renderManageStatus(row, headers) {
+  const id        = row.id;
+  const level     = row.level;
+  
+  const idxFirst  = headers.indexOf('First Name');
+  const idxLast   = headers.indexOf('Last Name');
+  const firstName = row.masterData[idxFirst] || "";
+  const lastName  = row.masterData[idxLast] || "";
+  const safeName  = `${firstName} ${lastName}`.replace(/'/g, "\\'");
+
+  if (!id) return '<span style="color:#ccc">No ID</span>';
+
+  const isDropped = level === 'Dropped';
+  const canRaise  = level === 'Junior Varsity' || level === 'Freshman';
+  const canLower  = level === 'Varsity'        || level === 'Junior Varsity';
+
+  if (isDropped) {
+    return `
+      <div style="display: flex; justify-content: center;">
+        <button class="add-student-btn" onclick="promptRestore('${id}', '${safeName}')">
+          <i class="fa-solid fa-rotate-left"></i> Restore
+        </button>
+      </div>`;
+  }
+
+  return `
+    <div style="display: flex; gap: 5px; justify-content: center;">
+      <button class="add-student-btn"
+              style="border-color: ${canRaise ? '#10b981' : '#e2e8f0'}; color: ${canRaise ? '#10b981' : '#cbd5e1'};"
+              ${canRaise ? `onclick="quickMove('${id}', '${level}', 'UP')"` : 'disabled'}>
+        <i class="fa-solid fa-arrow-up"></i>
+      </button>
+      <button class="add-student-btn"
+              style="border-color: ${canLower ? '#f59e0b' : '#e2e8f0'}; color: ${canLower ? '#f59e0b' : '#cbd5e1'};"
+              ${canLower ? `onclick="quickMove('${id}', '${level}', 'DOWN')"` : 'disabled'}>
+        <i class="fa-solid fa-arrow-down"></i>
+      </button>
+      <button class="add-student-btn" style="border-color: #ef4444; color: #ef4444;"
+              onclick="quickDrop('${id}', '${safeName}')">
+        <i class="fa-solid fa-user-xmark"></i>
+      </button>
+    </div>`;
+}
+
+function renderMetricGroupWithStatus(row, headers, prefix, periodKey, hasAnyData) {
+  if (!prefix || headers.length === 0) return `<span class="eligibility-status status-none">NO RECORD</span>`;
+
+  const mData     = row.masterData;
+  const studentId = row.id;
+  const school    = window.GLOBAL_SCHOOL;
+
+  const gpa     = mData[headers.indexOf(`${prefix}_GPA`)];
+  const conduct = mData[headers.indexOf(`${prefix}_Number Of U's`)];
+  const passing = mData[headers.indexOf(`${prefix}_Passing Classes`)];
+  const classes = mData[headers.indexOf(`${prefix}_Number Of Classes`)];
+  const status  = String(mData[headers.indexOf(`${prefix}_Status`)] || '').toUpperCase();
+  
+  const hasData    = (gpa !== "" && gpa !== null && gpa !== undefined);
+  const isEligible = (status === 'ELIGIBLE');
+
+  const probQualifyCol = `${prefix}_Probation_Qualify`;
+  const waiverAppCol   = `${prefix}_Waiver_Approved`;
+
+  const qualifyIdx = headers.indexOf(probQualifyCol);
+  const isQualifyChecked = qualifyIdx > -1 ? String(mData[qualifyIdx]).toUpperCase() === 'TRUE' : false;
+
+  const waiverIdx = headers.indexOf(waiverAppCol);
+  const isWaiverChecked = waiverIdx > -1 ? String(mData[waiverIdx]).toUpperCase() === 'TRUE' : false;
+
+  const globalWaiverIdx = headers.indexOf('Waiver Used');
+  const hasGlobalWaiver = globalWaiverIdx > -1 ? String(mData[globalWaiverIdx]).toUpperCase() === 'TRUE' : false;
+
+  const qualifyDisabled = isEligible || !hasData;
+  const waiverDisabled = qualifyDisabled || !isQualifyChecked;
+
+  // BADGE DISPLAY LOGIC (Now with unique IDs and the Orange state!)
+  const badgeId = `badge-${studentId}-${periodKey}`;
+  let badgeHtml;
+  
+  if (!hasData) {
+    badgeHtml = hasAnyData
+      ? `<span id="${badgeId}" class="eligibility-status status-none">NO RECORD</span>`
+      : `<span id="${badgeId}" class="eligibility-status status-none">PENDING</span>`;
+      
+  } else if (isEligible) {
+    badgeHtml = `<span id="${badgeId}" class="eligibility-status status-green">ELIGIBLE</span>`;
+    
+  } else if (isWaiverChecked || hasGlobalWaiver) {
+    badgeHtml = `<span id="${badgeId}" class="eligibility-status status-blue">WAIVER</span>`;
+    
+  } else if (isQualifyChecked) {
+    // NEW ORANGE QUALIFY STATE
+    badgeHtml = `<span id="${badgeId}" class="eligibility-status" style="background-color: #fff7ed; color: #ea580c; border: 1px solid #fdba74;">QUALIFY</span>`;
+    
+  } else {
+    badgeHtml = `<span id="${badgeId}" class="eligibility-status status-red">INELIGIBLE</span>`;
+  }
+
+  const gpaVal = hasData ? parseFloat(gpa).toFixed(2) : '-';
+  const conVal = hasData ? conduct : '-';
+  const pssVal = hasData ? passing : '-';
+  const clsVal = hasData ? classes : '-';
+
+  // Instant update functions mapped here
+  const toggleQualifyAttr = `onchange="handleQualifyChange('${school}', '${studentId}', '${probQualifyCol}', '${waiverAppCol}', '${periodKey}', this)"`;
+  const toggleWaiverAttr  = `onchange="handleWaiverChange('${school}', '${studentId}', '${waiverAppCol}', '${periodKey}', this)"`;
+
+  return `
+    <div class="grading-period-unit">
+      ${badgeHtml}
+
+      <div class="metrics-grid">
+        <div class="metric-item">
+          <span class="m-label">GPA</span>
+          <span class="${hasData && gpa < 2 ? 'text-danger' : 'text-success'}">${gpaVal}</span>
+        </div>
+        <div class="metric-item">
+          <span class="m-label">CONDUCT</span>
+          <span class="${hasData && conduct >= 2 ? 'text-danger' : 'text-success'}">${conVal}</span>
+        </div>
+        <div class="metric-item">
+          <span class="m-label">PASSING</span>
+          <span class="${hasData && passing < 4 ? 'text-danger' : 'text-success'}">${pssVal}</span>
+        </div>
+        <div class="metric-item">
+          <span class="m-label">CLASSES</span>
+          <span class="${hasData && classes < 4 ? 'text-danger' : 'text-success'}">${clsVal}</span>
+        </div>
+      </div>
+
+      <div class="waiver-toggle-box">
+        <div class="checkbox-row">
+          <input type="checkbox" id="q-${studentId}-${periodKey}"
+                 ${isQualifyChecked ? 'checked' : ''}
+                 ${qualifyDisabled ? 'disabled' : ''}
+                 ${toggleQualifyAttr}>
+          <label for="q-${studentId}-${periodKey}" style="opacity: ${qualifyDisabled ? '0.4' : '1'};">Qualify</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="w-${studentId}-${periodKey}"
+                 ${isWaiverChecked ? 'checked' : ''}
+                 ${waiverDisabled ? 'disabled' : ''}
+                 ${toggleWaiverAttr}>
+          <label for="w-${studentId}-${periodKey}" style="opacity: ${waiverDisabled ? '0.4' : '1'};">Waiver</label>
+        </div>
+      </div>
+    </div>`;
+}
+
+function buildRosterColMap(season, headers, allRosterData) {
+  const seasonKey  = (season || 'SPRING').toUpperCase();
+  const periodKeys = (window.CALENDAR_DATA.seasonPeriods || {})[seasonKey]
+                   || ['S1_FINALS', 'S2_6WK', 'S2_12WK'];
+
+  function activeKeyForSeason() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (const key of periodKeys) {
+      const p = (window.CALENDAR_DATA.gradingPeriods || []).find(p => p.key === key);
+      if (p && today >= parseLocalDate(p.start) && today <= parseLocalDate(p.end)) return key;
+    }
+    return null; 
+  }
+
+  const activeKey = activeKeyForSeason();
+
+  const periodHasData = periodKeys.map(key => {
+    const p = (window.CALENDAR_DATA.gradingPeriods || []).find(p => p.key === key);
+    if (!p) return false;
+    const prefix = p.prefix;
+    const gpaIdx = headers.indexOf(`${prefix}_GPA`);
+    if (gpaIdx === -1) return false;
+    return allRosterData.some(row => {
+      const gpa = row.masterData[gpaIdx];
+      return gpa !== '' && gpa !== null && gpa !== undefined;
+    });
+  });
+
+  const periodCols = periodKeys.map((key, i) => {
+    const p = (window.CALENDAR_DATA.gradingPeriods || []).find(p => p.key === key);
+    const label = p ? p.label : key;
+    const prefix = p ? p.prefix : null;
+    const hasAnyData = periodHasData[i];
+
+    return {
+      header:    label,
+      className: 'col-grading-period' + (key === activeKey ? ' col-active-period' : ''),
+      align:     'center',
+      formatter: (row) => renderMetricGroupWithStatus(row, headers, prefix, key, hasAnyData)
+    };
+  });
+
+  return [
+    {
+      header:    'Student Information',
+      className: 'col-student-info',
+      align:     'left',
+      formatter: (row) => {
+        const idxFirst  = headers.indexOf('First Name');
+        const idxLast   = headers.indexOf('Last Name');
+        const idxGrade  = headers.indexOf('Grade');
+        const idxWaiver = headers.indexOf('Waiver Used');
+
+        const first = row.masterData[idxFirst] || 'Unknown';
+        const last  = row.masterData[idxLast] || 'Student';
+        const grade = row.masterData[idxGrade] || '-';
+        const usedWaiver = String(row.masterData[idxWaiver]).toUpperCase() === 'TRUE';
+
+        const waiverIcon = usedWaiver
+          ? `<div class="waiver-icon-container"><i class="fa-solid fa-person-running waiver-icon-large" title="Waiver Used"></i></div>`
+          : '';
+        return `
+          <div class="student-cell-container">
+            <div class="student-text-block">
+              <p class="name-main">${last}, ${first}</p>
+              <p class="row-subtext">ID: ${row.id} (${grade})</p>
+            </div>
+            ${waiverIcon}
+          </div>`;
+      }
+    },
+    ...periodCols,
+    {
+      header:    'Manage',
+      className: 'col-manage',
+      align:     'center',
+      formatter: (row) => renderManageStatus(row, headers)
+    }
+  ];
 }
 
 // ─── Student Action Helpers ───────────────────────────────────────────────────
@@ -347,7 +567,6 @@ function quickDrop(id, name) {
 }
 
 function promptRestore(id, name) {
-  // First pick the level, then show the date dialog
   const choice   = prompt(`Restore ${name} to which level?\n\n1: Varsity\n2: Junior Varsity\n3: Freshman`, '1');
   const levelMap = { '1': 'Varsity', '2': 'Junior Varsity', '3': 'Freshman' };
   const newLevel = levelMap[choice];
@@ -364,21 +583,7 @@ function promptRestore(id, name) {
   });
 }
 
-// ─── Secretary Date Dialog ────────────────────────────────────────────────────
-
-/**
- * Shows a light-mode date confirmation dialog for secretary actions.
- * Mirrors the coach's showDateOverlay but styled for the desktop secretary view.
- *
- * @param {object} opts
- *   title        - dialog heading
- *   message      - descriptive text (may include HTML like <strong>)
- *   confirmLabel - text for the confirm button
- *   confirmClass - CSS class controlling confirm button color
- *   onConfirm    - callback(dateString) where dateString is "M/D/YYYY"
- */
 function showSecretaryDateDialog(opts) {
-  // Create overlay if it doesn't exist yet
   let overlay = document.getElementById('secretary-date-dialog');
   if (!overlay) {
     overlay = document.createElement('div');
@@ -424,32 +629,15 @@ function showSecretaryDateDialog(opts) {
 
   overlay.querySelector('.sdd-cancel-btn').onclick = close;
 
-  // Close on backdrop click
   overlay.onclick = e => { if (e.target === overlay) close(); };
 
   overlay.style.display = 'flex';
   dateInput.focus();
 }
 
-function toggleSpecificWaiver(studentId, colNum, isChecked) {
-  sendUpdate({
-    school:   window.GLOBAL_SCHOOL,
-    sport:    getCurrentSport(),
-    id:       studentId,
-    colIndex: colNum - 1,
-    value:    isChecked
-  });
-}
-
-// ─── IC Ad Hoc Export ─────────────────────────────────────────────────────────
-
-/**
- * Copies all student IDs for a given level to the clipboard as a
- * comma-separated list, ready to paste into IC's Ad Hoc student ID filter.
- */
 function copyLevelIDs(rows, level) {
   const ids = rows
-    .map(row => String(row[0]).trim())
+    .map(row => String(row.id).trim())
     .filter(id => id && id !== 'undefined');
 
   if (ids.length === 0) return;
@@ -459,7 +647,6 @@ function copyLevelIDs(rows, level) {
   navigator.clipboard.writeText(text).then(() => {
     showICCopyToast(level, ids.length);
   }).catch(() => {
-    // Fallback for browsers that block clipboard API
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.style.cssText = 'position:fixed; opacity:0;';
@@ -501,5 +688,74 @@ function showICCopyToast(level, count) {
     toast.style.transform = 'translateX(-50%) translateY(20px)';
     setTimeout(() => toast.remove(), 300);
   }, 3500);
+}
+
+/**
+ * Instantly updates the visual badge on the screen.
+ */
+function updateBadgeUI(studentId, periodKey, state) {
+  const badge = document.getElementById(`badge-${studentId}-${periodKey}`);
+  if (!badge) return;
+  
+  if (state === 'WAIVER') {
+    badge.className = 'eligibility-status status-blue';
+    badge.innerText = 'WAIVER';
+    badge.style.cssText = ''; // Clear custom inline styles
+  } else if (state === 'QUALIFY') {
+    badge.className = 'eligibility-status'; // Base class for padding/shape
+    badge.innerText = 'QUALIFY';
+    // Custom inline CSS for the Orange state
+    badge.style.cssText = 'background-color: #fff7ed; color: #ea580c; border: 1px solid #fdba74;';
+  } else if (state === 'INELIGIBLE') {
+    badge.className = 'eligibility-status status-red';
+    badge.innerText = 'INELIGIBLE';
+    badge.style.cssText = ''; 
+  }
+}
+
+/**
+ * Instantly updates UI for Qualify checkbox & handles Waiver lock
+ */
+function handleQualifyChange(school, studentId, qualifyCol, waiverCol, periodKey, checkbox) {
+  const isChecked = checkbox.checked;
+  google.script.run.updateEligibilityStatus(school, studentId, qualifyCol, isChecked);
+  
+  const waiverCheckbox = document.getElementById(`w-${studentId}-${periodKey}`);
+  const waiverLabel = document.querySelector(`label[for="w-${studentId}-${periodKey}"]`);
+  
+  if (waiverCheckbox) {
+    waiverCheckbox.disabled = !isChecked;
+    if (waiverLabel) waiverLabel.style.opacity = isChecked ? '1' : '0.4';
+    
+    if (!isChecked && waiverCheckbox.checked) {
+      waiverCheckbox.checked = false;
+      google.script.run.updateEligibilityStatus(school, studentId, waiverCol, false);
+    }
+  }
+
+  // Instantly update the badge!
+  if (isChecked) {
+     if (!waiverCheckbox || !waiverCheckbox.checked) {
+         updateBadgeUI(studentId, periodKey, 'QUALIFY');
+     }
+  } else {
+     updateBadgeUI(studentId, periodKey, 'INELIGIBLE');
+  }
+}
+
+/**
+ * Instantly updates UI for Waiver checkbox
+ */
+function handleWaiverChange(school, studentId, waiverCol, periodKey, checkbox) {
+  const isChecked = checkbox.checked;
+  google.script.run.updateEligibilityStatus(school, studentId, waiverCol, isChecked);
+
+  // Instantly update the badge!
+  if (isChecked) {
+     updateBadgeUI(studentId, periodKey, 'WAIVER');
+  } else {
+     // If they uncheck Waiver, it falls back to the Orange Qualify state!
+     updateBadgeUI(studentId, periodKey, 'QUALIFY');
+  }
 }
 </script>
