@@ -37,17 +37,35 @@ function doGet(e) {
   const schoolConfig   = SCHOOL_INFO[selectedSchool] || SCHOOL_INFO['Valhalla'];
   const template       = HtmlService.createTemplateFromFile('Index');
   
-  const userEmail = (Session.getEffectiveUser().getEmail() || Session.getActiveUser().getEmail()).toLowerCase();
-  const userRole = 'Pending';
+  // 1. Capture the verified logged-in email
+  const userEmail = Session.getActiveUser().getEmail().toLowerCase();
+  
+  let userRole = 'Unauthorized';
+  let coachSports = [];
+
+  // 2. Are they an Athletic Secretary (Admin)?
+  const adminCheck = validateAdminEmail(selectedSchool, userEmail);
+  if (adminCheck) {
+    userRole = 'Secretary';
+  } else {
+    // 3. Are they a Coach?
+    const coachCheck = validateCoachEmail(selectedSchool, userEmail);
+    if (coachCheck) {
+      userRole = 'Coach';
+      coachSports = coachCheck.sports; // Save the specific sports they are allowed to see
+    }
+  }
 
   const activeSports = getSportsForSchool(selectedSchool);
 
+  // 4. Pass everything to the frontend
   template.currentSchool  = selectedSchool;
   template.activeSports   = activeSports;
   template.seasonData     = SEASON_DATA;
   template.calendarData   = getDynamicCalendar();
   template.userRole       = userRole;
   template.userEmail      = userEmail;
+  template.coachSports    = coachSports; // Pass the coach's authorized sports
   template.config = {
     name:            selectedSchool,
     logoUrl:         schoolConfig.logoUrl,
@@ -314,12 +332,20 @@ function getDirectoryData(schoolName) {
   const config = SCHOOL_INFO[schoolName] || SCHOOL_INFO['Valhalla'];
   const ss     = SpreadsheetApp.openById(MASTER_DIRECTORY_ID);
   const sheet  = ss.getSheetByName(config.abbreviatedName);
-  if (!sheet) return [];
+  
+  if (!sheet) return { headers: [], rows: [] };
+  
   const data = sheet.getDataRange().getValues();
-  data.shift();
-  return data.map(row => row.map(cell =>
+  if (data.length === 0) return { headers: [], rows: [] };
+  
+  // Pluck the headers off the top so we can send them separately
+  const headers = data.shift(); 
+  const rows = data.map(row => row.map(cell =>
     cell instanceof Date ? cell.toLocaleDateString() : cell
   ));
+  
+  // Send the structured package
+  return { headers: headers, rows: rows };
 }
 
 // UPDATED: This function restores the proper data package {masterHeaders, roster}
@@ -790,3 +816,34 @@ function getDynamicCalendar() {
   
   return fullCalendar;
 }
+
+/**
+ * Updates manual eligibility overrides (Qualify/Waiver) in the Master Directory.
+ * Automatically creates the column if it doesn't exist yet.
+ */
+function updateEligibilityStatus(schoolName, studentId, colName, isChecked) {
+  const config = SCHOOL_INFO[schoolName];
+  if (!config) throw new Error('School config missing.');
+  
+  const ss = SpreadsheetApp.openById(MASTER_DIRECTORY_ID);
+  const sheet = ss.getSheetByName(config.abbreviatedName);
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  
+  let colIdx = headers.indexOf(colName);
+  
+  // If the specific Waiver column doesn't exist yet for this period, create it!
+  if (colIdx === -1) {
+    colIdx = headers.length;
+    sheet.getRange(1, colIdx + 1).setValue(colName);
+  }
+  
+  const idIdx = headers.indexOf('Student Number');
+  const rowIndex = data.findIndex(row => String(row[idIdx]).trim() === String(studentId).trim());
+  
+  if (rowIndex === -1) throw new Error('Student ID ' + studentId + ' not found.');
+  
+  sheet.getRange(rowIndex + 1, colIdx + 1).setValue(isChecked ? 'TRUE' : 'FALSE');
+  return true;
+}
+
