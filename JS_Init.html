@@ -25,21 +25,13 @@ window.ROSTER_CACHE   = {};
  */
 function fetchMasterDirectory() {
   const school = window.GLOBAL_SCHOOL;
-  console.log("🔄 Fetching directory for school:", school);
-  console.log("🔄 Type of school:", typeof school);
-
+  
   google.script.run
-    .withSuccessHandler(function (data) {
-      console.log("📦 Raw data received:", data);
-      console.log("📦 Type:", typeof data);
-      console.log("📦 Is array:", Array.isArray(data));
-      console.log("📦 Length:", data ? data.length : "null/undefined");
-      
-      if (data && data.length > 0) {
-        window.DIRECTORY_DATA = data;
-        console.log("✅ Directory ready (" + data.length + " rows)");
-      } else {
-        console.error("❌ Server returned null or empty directory data");
+    .withSuccessHandler(function (payload) {
+      // Unpack the headers and the rows into global variables
+      if (payload && payload.rows && payload.rows.length > 0) {
+        window.DIRECTORY_HEADERS = payload.headers;
+        window.DIRECTORY_DATA = payload.rows;
       }
     })
     .withFailureHandler(function (err) {
