@@ -1,13 +1,10 @@
 <script>
 // ── Modal State ───────────────────────────────────────────────────────────────
-let targetLevel      = '';   // Tracks which level (Varsity, JV, etc.) the modal is targeting
-let selectedStudents = [];   // Temporary "cart" of students queued to be added
+let targetLevel      = '';
+let selectedStudents = [];
 
 // ── Modal Lifecycle ───────────────────────────────────────────────────────────
 
-/**
- * Opens the Add Student modal for a given level and resets its state.
- */
 function openAddStudentModal(level) {
   targetLevel = level;
 
@@ -15,10 +12,14 @@ function openAddStudentModal(level) {
   document.getElementById('directorySearch').value      = '';
   document.getElementById('searchResults').innerHTML    = '<p class="text-muted text-center p-3">Search the master directory to see results.</p>';
   document.getElementById('selectedQueue').innerHTML    = '<p class="text-muted empty-queue-msg">No students selected yet.</p>';
-  document.getElementById('saveRosterBtn').disabled     = true;
+  
+  const saveBtn = document.getElementById('saveRosterBtn');
+  if (saveBtn) {
+    saveBtn.innerHTML = '<i class="fas fa-save"></i> Save All to Roster';
+    saveBtn.disabled  = true;
+  }
   selectedStudents = [];
 
-  // Reset date to today
   const addDateInput = document.getElementById('addStudentDate');
   if (addDateInput) {
     const todayStr = new Date().toISOString().split('T')[0];
@@ -36,20 +37,16 @@ function closeModal() {
 
 // ── Directory Search ──────────────────────────────────────────────────────────
 
-/** Triggers search on Enter key */
 function handleSearchKeyup(e) {
   if (e.key === 'Enter') performDirectorySearch();
 }
 
-/**
- * Filters the locally cached directory (zero server latency).
- * Supports multi-term searching separated by spaces or commas.
- */
 function performDirectorySearch() {
   const input      = document.getElementById('directorySearch').value.toLowerCase();
   const resultsDiv = document.getElementById('searchResults');
 
-  if (!window.DIRECTORY_DATA) {
+  // Check if both data and headers are loaded
+  if (!window.DIRECTORY_DATA || !window.DIRECTORY_HEADERS) {
     resultsDiv.innerHTML = `
       <div class="text-center p-4">
         <div class="spinner-small" style="margin: 0 auto;"></div>
@@ -64,20 +61,21 @@ function performDirectorySearch() {
     return;
   }
 
+  // DYNAMIC LOOKUP: Find the exact column index by its name
+  const idxId    = window.DIRECTORY_HEADERS.indexOf('Student Number');
+  const idxLast  = window.DIRECTORY_HEADERS.indexOf('Last Name');
+  const idxFirst = window.DIRECTORY_HEADERS.indexOf('First Name');
+
   const filtered = window.DIRECTORY_DATA.filter(row => {
-    const id    = String(row[0]).toLowerCase();
-    const last  = String(row[1]).toLowerCase();
-    const first = String(row[2]).toLowerCase();
+    const id    = String(row[idxId]).toLowerCase();
+    const last  = String(row[idxLast]).toLowerCase();
+    const first = String(row[idxFirst]).toLowerCase();
     return searchTerms.some(term => id.includes(term) || last.includes(term) || first.includes(term));
   }).slice(0, 50);
 
   displayDirectoryResults(filtered);
 }
 
-/**
- * Renders search results into the modal results list.
- * Includes a "Add All" button when multiple results are returned.
- */
 function displayDirectoryResults(results) {
   const resultsDiv = document.getElementById('searchResults');
 
@@ -92,13 +90,19 @@ function displayDirectoryResults(results) {
     ? `<button class="btn-secondary btn-sm mb-2" onclick="addAllToQueue()">+ Add All to List</button>`
     : '';
 
+  // DYNAMIC LOOKUP
+  const idxId    = window.DIRECTORY_HEADERS.indexOf('Student Number');
+  const idxLast  = window.DIRECTORY_HEADERS.indexOf('Last Name');
+  const idxFirst = window.DIRECTORY_HEADERS.indexOf('First Name');
+  const idxGrade = window.DIRECTORY_HEADERS.indexOf('Grade');
+
   results.forEach(student => {
     const safeData = btoa(unescape(encodeURIComponent(JSON.stringify(student))));
     html += `
       <div class="result-item">
         <div class="result-info">
-          <strong class="result-name">${student[1]}, ${student[2]}</strong>
-          <span class="result-id">ID: ${student[0]} | Grade: ${student[4]}</span>
+          <strong class="result-name">${student[idxLast]}, ${student[idxFirst]}</strong>
+          <span class="result-id">ID: ${student[idxId]} | Grade: ${student[idxGrade]}</span>
         </div>
         <button class="btn-add-to-queue" onclick="addToQueue('${safeData}')">
           <i class="fas fa-plus"></i>
@@ -113,15 +117,19 @@ function displayDirectoryResults(results) {
 
 function addToQueue(encodedData) {
   const student = JSON.parse(decodeURIComponent(escape(atob(encodedData))));
-  if (selectedStudents.some(s => s[0] === student[0])) return;
+  const idxId = window.DIRECTORY_HEADERS.indexOf('Student Number');
+  
+  if (selectedStudents.some(s => s[idxId] === student[idxId])) return;
   selectedStudents.push(student);
   renderQueue();
 }
 
 function addAllToQueue() {
   if (!window.lastSearchResults) return;
+  const idxId = window.DIRECTORY_HEADERS.indexOf('Student Number');
+  
   window.lastSearchResults.forEach(student => {
-    if (!selectedStudents.some(s => s[0] === student[0])) {
+    if (!selectedStudents.some(s => s[idxId] === student[idxId])) {
       selectedStudents.push(student);
     }
   });
@@ -146,9 +154,15 @@ function renderQueue() {
   }
 
   saveBtn.disabled = false;
+  
+  // DYNAMIC LOOKUP
+  const idxId    = window.DIRECTORY_HEADERS.indexOf('Student Number');
+  const idxLast  = window.DIRECTORY_HEADERS.indexOf('Last Name');
+  const idxFirst = window.DIRECTORY_HEADERS.indexOf('First Name');
+
   queueDiv.innerHTML = selectedStudents.map((s, idx) => `
     <div class="queue-item">
-      <span>${s[2]} ${s[1]} <small>(ID: ${s[0]})</small></span>
+      <span>${s[idxFirst]} ${s[idxLast]} <small>(ID: ${s[idxId]})</small></span>
       <button onclick="removeFromQueue(${idx})" style="border: none; background: none; color: red; cursor: pointer;">&times;</button>
     </div>
   `).join('');
@@ -156,19 +170,12 @@ function renderQueue() {
 
 // ── Save ──────────────────────────────────────────────────────────────────────
 
-/**
- * Sends the full queue to the server in one batch write,
- * then clears the cache and refreshes the roster view.
- * Works for both Secretary (table view) and Coach (card view).
- */
 function saveBulkRoster() {
   const isCoach = window.USER_ROLE === 'Coach';
   const sport   = isCoach
     ? window.COACH_SPORT
     : document.getElementById('active-sport-title').innerText;
 
-  // Resolve the "date added" from the modal date input.
-  // The input is required — block save if it's empty.
   const addDateInput = document.getElementById('addStudentDate');
   if (!addDateInput || !addDateInput.value) {
     addDateInput && addDateInput.focus();
@@ -179,27 +186,42 @@ function saveBulkRoster() {
   const [y, m, d] = addDateInput.value.split('-');
   const actionDate = `${parseInt(m)}/${parseInt(d)}/${y}`;
 
-  document.getElementById('saveRosterBtn').innerHTML =
-    '<i class="fas fa-spinner fa-spin"></i> Saving...';
+  const saveBtn = document.getElementById('saveRosterBtn');
+  if (saveBtn) {
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    saveBtn.disabled = true;
+  }
+
+  // DYNAMIC LOOKUP: Format exactly how Code.gs expects it: [ID, First, Last]
+  const idxId    = window.DIRECTORY_HEADERS.indexOf('Student Number');
+  const idxLast  = window.DIRECTORY_HEADERS.indexOf('Last Name');
+  const idxFirst = window.DIRECTORY_HEADERS.indexOf('First Name');
+
+  const formattedStudents = selectedStudents.map(s => [s[idxId], s[idxFirst], s[idxLast]]);
 
   google.script.run
     .withSuccessHandler(() => {
       delete window.ROSTER_CACHE[sport];
       selectedStudents = [];
+      if (saveBtn) {
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save All to Roster';
+      }
       closeModal();
-
+      
       if (isCoach) {
         fetchAndRenderCoachRoster(sport);
       } else {
         const activeNav = document.querySelector('.nav-item.active');
-        handleSportClick(activeNav, null, sport);
+        handleSportClick(activeNav, window.ACTIVE_SEASON, sport);
       }
     })
     .withFailureHandler(err => {
       alert("Failed to save roster: " + err.message);
-      document.getElementById('saveRosterBtn').innerHTML = 'Save All to Roster';
-      document.getElementById('saveRosterBtn').disabled = false;
+      if (saveBtn) {
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save All to Roster';
+        saveBtn.disabled = false;
+      }
     })
-    .addBulkStudentsToSport(window.GLOBAL_SCHOOL, sport, selectedStudents, targetLevel, actionDate, window.USER_EMAIL);
+    .addBulkStudentsToSport(window.GLOBAL_SCHOOL, sport, formattedStudents, targetLevel, actionDate, window.USER_EMAIL);
 }
 </script>
